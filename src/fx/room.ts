@@ -16,8 +16,8 @@ export type Phase =
   | "ending"
   | "ended";
 
-/** Plain candlelight, before any spirit arrives. */
-const CANDLE = "#ef8e34";
+/** Moonlight, before any spirit lights the candles. */
+const MOONLIGHT = "#d6d8e2";
 
 const toRgb = (hex: string) => {
   const n = parseInt(hex.slice(1), 16);
@@ -46,7 +46,7 @@ export class Room {
 
   /** The candle color, which lights the room, the glows and the spirit's words. */
   setSpirit(spirit: PublicSpirit | null): void {
-    const rgb = toRgb(spirit?.color ?? CANDLE);
+    const rgb = toRgb(spirit?.color ?? MOONLIGHT);
     const light = rgb.map((c) => Math.round(c + (255 - c) * 0.4));
     this.el.style.setProperty("--spirit-rgb", rgb.join(", "));
     this.el.style.setProperty("--spirit-light", `rgb(${light.join(", ")})`);

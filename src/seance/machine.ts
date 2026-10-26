@@ -1,6 +1,6 @@
 // The séance itself: the lock, the greeting that lights the candles, asking,
-// answering and goodbye. Whatever the sitters spell is sent when they bring
-// the planchette back to the center of the board (or rest it on ?).
+// answering and goodbye. Whatever the sitters spell is sent the moment they
+// bring the planchette back to the center of the board.
 //
 // locked → unlocking → dormant → summoning → listening ⇄ asking → answering → ending → ended
 
@@ -21,14 +21,11 @@ import type { InkLine, SpiritLine } from "./lines";
 const HINTS = {
   locked: "Spell the secret word, then bring the planchette back to the center.",
   unprepared: "The board has not been prepared yet. See the README.",
-  dormant: "Spell HI with the planchette, then bring it back to the center.",
-  listening: "Spell your question, then bring the planchette back to the center to ask.",
-  send: "Bring the planchette back to the center to send it.",
+  dormant: "Spell HI, then bring the planchette back to the center.",
+  listening: "Spell your question, then bring the planchette back to the center.",
+  send: "Back to the center to send it. Tap the paper to rub out a letter.",
   unlocked: "The board knows you now. Spell HI to light the candles.",
 };
-
-/** Glyphs that send what the sitters spelled. */
-const SENDS = new Set(["CENTER", "ASK"]);
 
 export interface SeanceParts {
   room: Room;
@@ -78,8 +75,8 @@ export class Seance {
   /** The glass rested long enough on a glyph. */
   onSelect(el: BoardElement): void {
     if (!this.sittersHaveIt) return;
-    const { ink, view, sound, room } = this.parts;
-    if (SENDS.has(el.id)) {
+    const { ink, view, sound } = this.parts;
+    if (el.id === "CENTER") {
       if (ink.empty) return;
       view.flash(el.id, 600);
       sound.knock();
@@ -99,9 +96,7 @@ export class Seance {
 
     view.flash(el.id, 500);
     sound.knock();
-    if (el.id === "UNSAY") {
-      ink.unsay();
-    } else if (el.id === "YES" || el.id === "NO") {
+    if (el.id === "YES" || el.id === "NO") {
       // On an empty slip, YES or NO is an answer to the spirit's own question.
       const answering = ink.empty && this.phase === "listening";
       ink.addWord(el.id);
@@ -109,15 +104,29 @@ export class Seance {
     } else {
       ink.add(el.label);
     }
+    this.showSpelling();
+  }
+
+  /** Rubs the last letter off the paper slip. */
+  unsay(): void {
+    const { ink, sound } = this.parts;
+    if (!this.sittersHaveIt || ink.empty) return;
+    ink.unsay();
+    sound.rub();
+    this.showSpelling();
+  }
+
+  private showSpelling(): void {
+    const { ink, view, room } = this.parts;
     view.beckon(!ink.empty);
     room.hint(ink.empty ? this.restingHint() : this.phase === "listening" && this.taught ? "" : HINTS.send);
   }
 
   /** Re-applies what's drawn on the board after it is re-rendered for a new layout. */
   restoreBoard(): void {
-    const { view } = this.parts;
-    if (this.spirit && this.phase !== "ending" && this.phase !== "ended") view.setSigil(this.spirit, "scorch");
+    const { view, ink } = this.parts;
     view.engraveName(this.spirit && this.named ? this.spirit.name : null);
+    view.beckon(this.sittersHaveIt && !ink.empty);
   }
 
   dismissEndCard(): void {
@@ -217,11 +226,7 @@ export class Seance {
     room.setCandles(true);
     possessor.style = spirit.motion;
     sound.summon(spirit.sound);
-    await this.parts.sleep(900);
-    view.setSigil(spirit, "burn");
-    window.setTimeout(() => {
-      if (this.spirit === spirit && this.phase !== "ending" && this.phase !== "ended") view.setSigil(spirit, "scorch");
-    }, 2600);
+    await this.parts.sleep(1200);
     await possessor.jolt();
     await this.parts.sleep(450);
     await this.spell(spirit.openers[this.openerIndex]);
@@ -312,13 +317,12 @@ export class Seance {
 
   /** The candles go out one by one and the end card shows who came. */
   private async end(): Promise<void> {
-    const { room, view, sound, endCard, possessor } = this.parts;
+    const { room, sound, endCard, possessor } = this.parts;
     const spirit = this.spirit!;
     this.setPhase("ending");
     sound.gutter();
     sound.release();
     room.setCandles(false);
-    view.setSigil(spirit, "fade");
     await this.parts.sleep(1900);
     this.lastSpiritId = spirit.id;
     possessor.style = STILL_AIR;
@@ -330,7 +334,6 @@ export class Seance {
   private loseTheTable(): void {
     const { room, view, sound, spiritLine } = this.parts;
     sound.release();
-    if (this.spirit) view.setSigil(this.spirit, "fade");
     view.engraveName(null);
     spiritLine.begin();
     this.spirit = null;

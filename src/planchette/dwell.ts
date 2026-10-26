@@ -4,6 +4,8 @@
 export interface DwellOptions {
   /** How long the glass must rest on a glyph, in ms. */
   dwellMs: number;
+  /** Per-glyph wait, e.g. 0 for a glyph that acts the moment the glass stops on it. */
+  dwellFor?: (id: string) => number;
   /** Moving faster than this (board units per second) restarts the wait. */
   maxSpeed: number;
 }
@@ -49,10 +51,13 @@ export class DwellDetector {
       this.candidate = id;
       this.since = t;
     }
-    if (!steady || this.speed > this.options.maxSpeed) this.since = t;
+    const still = steady && this.speed <= this.options.maxSpeed;
+    if (!still) this.since = t;
     if (!id || id === this.blocked) return { hoverId: id, progress: 0, selected: null };
 
-    const progress = Math.min(1, (t - this.since) / this.options.dwellMs);
+    // A glyph with no wait acts as soon as the glass stops on it.
+    const wait = this.options.dwellFor?.(id) ?? this.options.dwellMs;
+    const progress = wait <= 0 ? (still ? 1 : 0) : Math.min(1, (t - this.since) / wait);
     if (progress < 1) return { hoverId: id, progress, selected: null };
     this.blocked = id;
     this.since = t;

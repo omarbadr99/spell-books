@@ -12,7 +12,7 @@ export interface Point {
 }
 
 export interface BoardElement {
-  /** "A".."Z", "0".."9", "YES", "NO", "GOODBYE", "ASK", "UNSAY", or "CENTER" (where the planchette rests). */
+  /** "A".."Z", "0".."9", "YES", "NO", "GOODBYE", or "CENTER" (where the planchette rests). */
   id: string;
   kind: ElementKind;
   label: string;
@@ -33,10 +33,10 @@ export interface BoardLayout {
   elements: BoardElement[];
   /** Where the planchette sleeps: the CENTER glyph, where resting sends what was spelled. */
   rest: Point;
-  sigil: Point & { r: number };
-  nameplate: Point & { w: number; h: number };
-  sun: Point & { r: number };
+  /** The dotted moon at the head of the board. */
   moon: Point & { r: number };
+  /** Where a spirit's name appears once it gives it. */
+  nameplate: Point & { w: number; h: number };
   planchetteScale: number;
 }
 
@@ -108,9 +108,7 @@ function wideLayout(): BoardLayout {
     ...arc({ letters: "ABCDEFGHIJKLM", ...arcThrough({ x: 800, y: 420 }, 610, 200), size: 78 }),
     ...arc({ letters: "NOPQRSTUVWXYZ", ...arcThrough({ x: 800, y: 590 }, 560, 190), size: 78 }),
     ...digitRow(900, 350, 1250, 56),
-    word("UNSAY", "✕", "action", 420, 1010, 90, 60, 58),
     word("GOODBYE", "GOOD BYE", "word", 800, 1010, 175, 60, 56),
-    word("ASK", "?", "action", 1180, 1010, 90, 60, 66),
     word("CENTER", "", "action", 800, 742, 80, 80, 0),
   ];
   return {
@@ -119,10 +117,8 @@ function wideLayout(): BoardLayout {
     height,
     elements,
     rest: { x: 800, y: 742 },
-    sigil: { x: 800, y: 205, r: 80 },
+    moon: { x: 800, y: 188, r: 74 },
     nameplate: { x: 800, y: 318, w: 380, h: 48 },
-    sun: { x: 140, y: 172, r: 52 },
-    moon: { x: 1460, y: 172, r: 52 },
     planchetteScale: 1,
   };
 }
@@ -137,9 +133,7 @@ function tallLayout(): BoardLayout {
     ...arc({ letters: "JKLMNOPQR", ...arcThrough({ x: 500, y: 520 }, 370, 130), size: 74 }),
     ...arc({ letters: "STUVWXYZ", ...arcThrough({ x: 500, y: 655 }, 330, 110), size: 74 }),
     ...digitRow(990, 95, 905, 50),
-    word("UNSAY", "✕", "action", 200, 1118, 82, 56, 54),
     word("GOODBYE", "GOOD BYE", "word", 500, 1118, 155, 56, 50),
-    word("ASK", "?", "action", 800, 1118, 82, 56, 62),
     word("CENTER", "", "action", 500, 846, 74, 74, 0),
   ];
   return {
@@ -148,10 +142,8 @@ function tallLayout(): BoardLayout {
     height,
     elements,
     rest: { x: 500, y: 846 },
-    sigil: { x: 500, y: 136, r: 70 },
+    moon: { x: 500, y: 132, r: 64 },
     nameplate: { x: 500, y: 236, w: 300, h: 44 },
-    sun: { x: 78, y: 126, r: 44 },
-    moon: { x: 922, y: 126, r: 44 },
     planchetteScale: 0.9,
   };
 }
@@ -170,6 +162,16 @@ export function buildLayout(kind: LayoutKind): BoardLayout {
 /** Portrait screens get the three-arc board so letters stay finger-sized. */
 export function chooseLayoutKind(viewportWidth: number, viewportHeight: number): LayoutKind {
   return viewportWidth / viewportHeight < 0.9 ? "tall" : "wide";
+}
+
+/** How wide the board is drawn, in CSS pixels: as big as fits, leaving room for the lines above and below it. */
+export function boardWidthFor(layout: BoardLayout, viewportWidth: number, viewportHeight: number): number {
+  const tall = layout.kind === "tall";
+  // Phones held sideways get a compact version of the lines around the board.
+  const chrome = viewportHeight < 520 ? 118 : tall ? 236 : 206;
+  const sides = tall ? 32 : 230;
+  const width = Math.min(viewportWidth - sides, (viewportHeight - chrome) * (layout.width / layout.height), tall ? 640 : 1160);
+  return Math.max(240, Math.floor(width));
 }
 
 /** The element under a point, or null. Overlapping ellipses go to the closest centre. */

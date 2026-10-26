@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLayout, chooseLayoutKind, elementById, hitTest, type LayoutKind } from "../../src/board/layout";
+import { boardWidthFor, buildLayout, chooseLayoutKind, elementById, hitTest, type LayoutKind } from "../../src/board/layout";
 import { DIGITS, LETTERS } from "../../shared/text";
 
 const kinds: LayoutKind[] = ["wide", "tall"];
@@ -9,7 +9,7 @@ describe.each(kinds)("%s layout", (kind) => {
 
   it("has every glyph exactly once", () => {
     const ids = layout.elements.map((el) => el.id).sort();
-    const expected = [...LETTERS, ...DIGITS, "YES", "NO", "GOODBYE", "ASK", "UNSAY", "CENTER"].sort();
+    const expected = [...LETTERS, ...DIGITS, "YES", "NO", "GOODBYE", "CENTER"].sort();
     expect(ids).toEqual(expected);
   });
 
@@ -49,15 +49,26 @@ describe.each(kinds)("%s layout", (kind) => {
     }
   });
 
-  it("keeps the sigil and nameplate clear of the glyphs", () => {
-    const { sigil, nameplate } = layout;
-    expect(hitTest(layout, sigil.x, sigil.y)).toBeNull();
+  it("keeps the moon and nameplate clear of the glyphs", () => {
+    const { moon, nameplate } = layout;
+    for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      expect(hitTest(layout, moon.x + dx * moon.r, moon.y + dy * moon.r)).toBeNull();
+    }
     expect(hitTest(layout, nameplate.x - nameplate.w / 2, nameplate.y)).toBeNull();
     expect(hitTest(layout, nameplate.x + nameplate.w / 2, nameplate.y)).toBeNull();
   });
 });
 
 describe("layout helpers", () => {
+  it("sizes the board to fit the window", () => {
+    expect(boardWidthFor(buildLayout("tall"), 390, 844)).toBe(358);
+    const wide = boardWidthFor(buildLayout("wide"), 1280, 800);
+    expect(wide).toBeLessThanOrEqual(1280 - 230);
+    expect(wide * (1100 / 1600)).toBeLessThanOrEqual(800 - 206);
+    expect(boardWidthFor(buildLayout("wide"), 2560, 1440)).toBe(1160);
+    expect(boardWidthFor(buildLayout("tall"), 200, 300)).toBe(240);
+  });
+
   it("uses the tall board on portrait screens", () => {
     expect(chooseLayoutKind(390, 844)).toBe("tall");
     expect(chooseLayoutKind(1280, 800)).toBe("wide");

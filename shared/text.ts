@@ -4,8 +4,10 @@
 export const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 export const DIGITS = "1234567890";
 
-/** Longest reply a spirit may spell. Longer replies are cut at a word boundary. */
-export const MAX_REPLY_CHARS = 48;
+/** Most words a spirit may spell. Most replies should be one word. */
+export const MAX_REPLY_WORDS = 3;
+/** Longest reply a spirit may spell. */
+export const MAX_REPLY_CHARS = 32;
 /** Longest question the sitters can spell. */
 export const MAX_QUESTION_CHARS = 60;
 
@@ -21,35 +23,31 @@ export type SpiritMove =
   | { type: "glyph"; target: string; text: string }
   | { type: "space" };
 
-const GOODBYE_PATTERN = /\bGOOD ?BYE\b\??/g;
-
 /**
  * Turns anything a model might say into something the board can spell:
- * capitals, digits, single spaces and an optional "?" after a word, at most
- * MAX_REPLY_CHARS long. A closing GOODBYE survives truncation.
+ * capitals, digits and single spaces, at most MAX_REPLY_WORDS words and
+ * MAX_REPLY_CHARS long. A closing GOODBYE survives the cut.
  */
 export function sanitizeReply(raw: string): string {
-  let text = raw
+  const words = raw
     .toUpperCase()
     .replace(/['’‘`]/g, "")
-    .replace(/[^A-Z0-9?]+/g, " ")
-    .replace(/(^|\s)\?+/g, "$1")
-    .replace(/\?+/g, "?")
-    .replace(/\?(?=[A-Z0-9])/g, "? ")
-    .replace(GOODBYE_PATTERN, "GOODBYE")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\bGOOD BYE\b/g, "GOODBYE")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
 
-  if (text.length <= MAX_REPLY_CHARS) return text;
-
-  const endsWithGoodbye = text.endsWith(" GOODBYE");
-  if (endsWithGoodbye) text = text.slice(0, -" GOODBYE".length);
-  const limit = MAX_REPLY_CHARS - (endsWithGoodbye ? " GOODBYE".length : 0);
-  if (text.length > limit) {
-    const cut = text.lastIndexOf(" ", limit);
-    text = cut > 0 ? text.slice(0, cut) : text.slice(0, limit);
+  const goodbye = words.length > 1 && words[words.length - 1] === "GOODBYE";
+  const room = MAX_REPLY_WORDS - (goodbye ? 1 : 0);
+  const kept: string[] = [];
+  for (const word of goodbye ? words.slice(0, -1) : words) {
+    if (kept.length === room || [...kept, word].join(" ").length > MAX_REPLY_CHARS - (goodbye ? 8 : 0)) break;
+    kept.push(word);
   }
-  return endsWithGoodbye ? `${text} GOODBYE` : text;
+  if (kept.length === 0 && words.length > 0 && !goodbye) kept.push(words[0].slice(0, MAX_REPLY_CHARS));
+  if (goodbye) kept.push("GOODBYE");
+  return kept.join(" ");
 }
 
 /** Cleans up a question spelled by the sitters (letters, digits, spaces). */
@@ -80,9 +78,7 @@ export function replyToMoves(reply: string): SpiritMove[] {
         moves.push({ type: "glyph", target: word, text: word });
         return;
       }
-      for (const ch of word) {
-        moves.push({ type: "glyph", target: ch === "?" ? "ASK" : ch, text: ch });
-      }
+      for (const ch of word) moves.push({ type: "glyph", target: ch, text: ch });
     });
   return moves;
 }

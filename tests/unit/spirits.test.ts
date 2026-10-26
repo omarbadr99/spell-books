@@ -9,10 +9,17 @@ const boardClean = (line: string) => {
 };
 
 describe("spirit roster", () => {
-  it("has twelve spirits with unique ids and sigils", () => {
+  it("has twelve spirits with unique ids", () => {
     expect(SPIRITS).toHaveLength(12);
-    for (const key of ["id", "sigil"] as const) {
-      expect(new Set(SPIRITS.map((s) => s[key])).size, key).toBe(SPIRITS.length);
+    expect(new Set(SPIRITS.map((s) => s.id)).size).toBe(SPIRITS.length);
+  });
+
+  it("moves every spirit at a believable pace", () => {
+    for (const { id, motion } of SPIRITS) {
+      expect(motion.speed, id).toBeGreaterThanOrEqual(400);
+      expect(motion.speed, id).toBeLessThanOrEqual(1600);
+      expect(motion.overshoot, id).toBeLessThan(30);
+      expect(motion.tremor, id).toBeLessThanOrEqual(6);
     }
   });
 
@@ -29,7 +36,6 @@ describe("spirit roster", () => {
   it.each(SPIRITS.map((s) => [s.id, s] as const))("%s is complete and board-clean", (_id, spirit) => {
     const persona = PERSONAS[spirit.id];
     expect(spirit.color).toMatch(/^#[0-9a-f]{6}$/);
-    expect(spirit.sigil.length).toBeGreaterThan(20);
     expect(spirit.openers.length).toBeGreaterThanOrEqual(2);
     expect(spirit.farewells.length).toBeGreaterThanOrEqual(2);
     spirit.openers.forEach(boardClean);
@@ -43,8 +49,12 @@ describe("spirit roster", () => {
     for (const [question, answer] of persona.examples) {
       expect(question).toBe(normalizeBoardWord(question));
       boardClean(answer);
-      expect(answer.split(" ").length, answer).toBeLessThanOrEqual(5);
+      expect(answer.split(" ").length, answer).toBeLessThanOrEqual(2);
     }
+    // Most answers are a single word.
+    const oneWord = persona.examples.filter(([, answer]) => !answer.includes(" ")).length;
+    expect(oneWord, spirit.id).toBeGreaterThanOrEqual(persona.examples.length - 1);
+    for (const line of [...spirit.openers, ...spirit.farewells]) expect(line.split(" ").length, line).toBeLessThanOrEqual(2);
   });
 
   it("asks who-are-you in every persona so the name reveal is modelled", () => {
@@ -56,9 +66,9 @@ describe("spirit roster", () => {
   it("builds a stable system prompt that carries the rules and the persona", () => {
     const prompt = buildSystemPrompt(PERSONAS.silas);
     expect(prompt).toBe(buildSystemPrompt(PERSONAS.silas));
-    expect(prompt).toContain("one to five words");
+    expect(prompt).toContain("answer with ONE word");
     expect(prompt).toContain("SILAS CRANE");
-    expect(prompt).toContain("WHOAREYOU → SILAS CRANE KEEPER");
+    expect(prompt).toContain("WHOAREYOU → SILAS");
   });
 
   it("never summons the spirit that just left", () => {

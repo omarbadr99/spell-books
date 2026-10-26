@@ -44,7 +44,6 @@ export class EndCard {
   }
 
   show(spirit: PublicSpirit, named: boolean, questions: number): void {
-    this.el.querySelector(".endcard-sigil path")!.setAttribute("d", spirit.sigil);
     this.el.querySelector(".endcard-name")!.textContent = named ? spirit.name : "Unnamed";
     this.el.querySelector(".endcard-epitaph")!.textContent = spirit.epitaph;
     const asked = `${questions} ${questions === 1 ? "question" : "questions"} asked`;

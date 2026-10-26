@@ -13,33 +13,33 @@ import {
 describe("sanitizeReply", () => {
   it("uppercases and keeps only board characters", () => {
     expect(sanitizeReply("Yes, child.")).toBe("YES CHILD");
-    expect(sanitizeReply("don't  look\nbehind you!")).toBe("DONT LOOK BEHIND YOU");
-    expect(sanitizeReply("I died in 1911…")).toBe("I DIED IN 1911");
+    expect(sanitizeReply("don't  look!")).toBe("DONT LOOK");
+    expect(sanitizeReply("1911…")).toBe("1911");
   });
 
-  it("keeps a question mark only at the end of a word", () => {
-    expect(sanitizeReply("who are you??")).toBe("WHO ARE YOU?");
+  it("drops question marks, which the board can't spell", () => {
+    expect(sanitizeReply("who are you??")).toBe("WHO ARE YOU");
     expect(sanitizeReply("? hello")).toBe("HELLO");
-    expect(sanitizeReply("what?why")).toBe("WHAT? WHY");
   });
 
   it("joins GOOD BYE into the board word", () => {
     expect(sanitizeReply("Good bye.")).toBe("GOODBYE");
-    expect(sanitizeReply("farewell, goodbye?")).toBe("FAREWELL GOODBYE");
+    expect(sanitizeReply("farewell, good-bye")).toBe("FAREWELL GOODBYE");
   });
 
-  it("cuts long replies at a word boundary", () => {
-    const long = "THE LAMP IS LIT AND THE SEA IS CALM AND I AM COUNTING EVERY WAVE";
-    const out = sanitizeReply(long);
-    expect(out.length).toBeLessThanOrEqual(MAX_REPLY_CHARS);
-    expect(long.startsWith(out)).toBe(true);
-    expect(out.endsWith(" ")).toBe(false);
+  it("keeps at most three words", () => {
+    expect(sanitizeReply("the lamp is lit and the sea is calm")).toBe("THE LAMP IS");
+    expect(sanitizeReply("Storm.").split(" ")).toHaveLength(1);
   });
 
   it("keeps a closing GOODBYE when it has to cut", () => {
-    const out = sanitizeReply("YOU ARE THE RUDEST SITTERS I HAVE MET IN TWO HUNDRED YEARS GOODBYE");
+    expect(sanitizeReply("you are the rudest sitters goodbye")).toBe("YOU ARE GOODBYE");
+  });
+
+  it("keeps replies short enough to spell", () => {
+    const out = sanitizeReply("Supercalifragilisticexpialidocious extraordinarily");
     expect(out.length).toBeLessThanOrEqual(MAX_REPLY_CHARS);
-    expect(out.endsWith(" GOODBYE")).toBe(true);
+    expect(out).toBe("SUPERCALIFRAGILISTICEXPIALIDOCIO");
   });
 
   it("returns an empty string when nothing is spellable", () => {
@@ -74,13 +74,12 @@ describe("replyToMoves", () => {
     ]);
   });
 
-  it("spells other words letter by letter, with ? on the ASK mark", () => {
-    expect(replyToMoves("HI 2?")).toEqual([
+  it("spells other words letter by letter", () => {
+    expect(replyToMoves("HI 2")).toEqual([
       { type: "glyph", target: "H", text: "H" },
       { type: "glyph", target: "I", text: "I" },
       { type: "space" },
       { type: "glyph", target: "2", text: "2" },
-      { type: "glyph", target: "ASK", text: "?" },
     ]);
   });
 

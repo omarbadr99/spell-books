@@ -127,12 +127,12 @@ describe("asking a spirit", () => {
     const { create, deps } = fakeClaude(
       message([
         { type: "thinking", thinking: "", signature: "sig" },
-        { type: "text", text: "Silas Crane, keeper." },
+        { type: "text", text: "Silas." },
       ]),
     );
     const res = await handleApi(req("POST", "/api/ask", goodAsk, await seatFor(env)), env, deps);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ reply: "SILAS CRANE KEEPER" });
+    expect(await res.json()).toEqual({ reply: "SILAS" });
 
     expect(create).toHaveBeenCalledTimes(1);
     const params = (create.mock.calls[0] as unknown[])[0] as Anthropic.MessageCreateParamsNonStreaming;
@@ -209,7 +209,7 @@ describe("asking a spirit", () => {
     const ask = (question: string) =>
       handleApi(req("POST", "/api/ask", { ...goodAsk, question }, seat), env, noClaude).then((r) => r.json());
     expect(await ask("IS")).toEqual({ reply: "YES" });
-    expect(await ask("WHOAREYOU")).toEqual({ reply: "SILAS CRANE" });
+    expect(await ask("WHOAREYOU")).toEqual({ reply: "SILAS" });
     expect(await ask("BYE")).toEqual({ reply: "GOODBYE" });
   });
 });

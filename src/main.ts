@@ -1,10 +1,18 @@
-import "@fontsource/cinzel-decorative/700.css";
+import "@fontsource/kalnia/700.css";
 import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "./styles.css";
 import "./fx/atmosphere.css";
 
-import { buildLayout, chooseLayoutKind, elementById, hitTest, type BoardLayout, type LayoutKind } from "./board/layout";
+import {
+  boardWidthFor,
+  buildLayout,
+  chooseLayoutKind,
+  elementById,
+  hitTest,
+  type BoardLayout,
+  type LayoutKind,
+} from "./board/layout";
 import { BoardView } from "./board/render";
 import { SoundScape } from "./fx/audio";
 import { Room } from "./fx/room";
@@ -16,7 +24,8 @@ import { InkLine, SpiritLine } from "./seance/lines";
 import { Seance } from "./seance/machine";
 import { Ticker } from "./ticker";
 
-const DWELL_MS = 700;
+/** How long the glass rests on a glyph to choose it, once the fingers have stopped. A pause is enough. */
+const DWELL_MS = 130;
 
 // ?speed=4 runs the spirits faster; only honoured in development, for the tests.
 const speed = import.meta.env.DEV ? Math.max(1, Number(new URLSearchParams(location.search).get("speed")) || 1) : 1;
@@ -26,15 +35,19 @@ const roomEl = $<HTMLElement>("#room");
 const boardEl = $<SVGSVGElement>("#board");
 
 const ticker = new Ticker();
-const view = new BoardView(boardEl);
+const view = new BoardView(boardEl, $<SVGSVGElement>("#hand"));
 const planchette = new Planchette(view);
 const possessor = new Possessor(planchette, view, ticker, speed);
 const sound = new SoundScape();
-possessor.onTap = () => sound.tap();
 const room = new Room(roomEl, $("#table"), $("#hint"));
 
 let layout: BoardLayout = buildLayout(chooseLayoutKind(innerWidth, innerHeight));
-const dwell = new DwellDetector((x, y) => hitTest(layout, x, y)?.id ?? null, { dwellMs: DWELL_MS, maxSpeed: 260 });
+// The center needs no wait: stopping the glass there sends what was spelled.
+const dwell = new DwellDetector((x, y) => hitTest(layout, x, y)?.id ?? null, {
+  dwellMs: DWELL_MS,
+  dwellFor: (id) => (id === "CENTER" ? 0 : DWELL_MS),
+  maxSpeed: 260,
+});
 
 const seance: Seance = new Seance({
   room,
@@ -50,19 +63,14 @@ const seance: Seance = new Seance({
 });
 
 function sizeBoard(): void {
-  const tall = layout.kind === "tall";
-  // Room for the spirit's line, the slip and the hint; phones held sideways get a compact version.
-  const chrome = innerHeight < 520 ? 118 : tall ? 236 : 206;
-  const sides = tall ? 32 : 230;
-  const width = Math.min(innerWidth - sides, (innerHeight - chrome) * (layout.width / layout.height), tall ? 640 : 1160);
-  roomEl.style.setProperty("--board-w", `${Math.max(240, Math.floor(width))}px`);
+  roomEl.style.setProperty("--board-w", `${boardWidthFor(layout, innerWidth, innerHeight)}px`);
 }
 
 function applyLayout(kind: LayoutKind, first = false): void {
   const previous = layout;
   layout = buildLayout(kind);
   room.setLayout(kind);
-  view.render(layout);
+  view.render(layout, boardWidthFor(layout, innerWidth, innerHeight) * (window.devicePixelRatio || 1));
   sizeBoard();
   planchette.place(
     first
@@ -87,12 +95,20 @@ boardEl.addEventListener("pointermove", (e) => {
   if (planchette.held) planchette.dragTo(view.toBoard(e.clientX, e.clientY));
 });
 const letGo = () => {
+  if (!planchette.held) return;
+  // Letting go with the glass on the center sends too, however briefly it was there.
+  const aim = planchette.aim;
+  const center = hitTest(layout, aim.x, aim.y);
   planchette.release();
   dwell.release();
   view.setDwell(0);
+  if (center?.id === "CENTER" && !planchette.driven) seance.onSelect(center);
 };
 boardEl.addEventListener("pointerup", letGo);
 boardEl.addEventListener("pointercancel", letGo);
+// Tapping the paper slip rubs out the last letter.
+$("#slip").addEventListener("click", () => seance.unsay());
+
 // iOS only starts audio from certain gestures, so try on each of them.
 for (const type of ["pointerdown", "touchend", "click"]) document.addEventListener(type, () => sound.unlock());
 
@@ -152,11 +168,12 @@ if (import.meta.env.DEV) {
 
 async function start(): Promise<void> {
   await Promise.race([
-    document.fonts.load("700 40px 'Cinzel Decorative'").catch(() => undefined),
+    document.fonts.load("700 40px Kalnia").catch(() => undefined),
     new Promise((resolve) => setTimeout(resolve, 1500)),
   ]);
   applyLayout(layout.kind, true);
   showMute();
+  requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("preload")));
   ticker.start();
   await seance.boot();
 }

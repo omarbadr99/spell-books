@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#060408" />
-    <meta name="description" content="A candlelit talking board. Spell a question with the planchette and a spirit answers." />
+    <meta name="theme-color" content="#030304" />
+    <meta name="description" content="A talking board by moonlight. Spell HI with the planchette, the candles light, and a spirit answers." />
     <title>Spirit Board</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
-  <body>
+  <body class="preload">
     <main id="room" class="phase-booting">
       <div class="glow" aria-hidden="true"></div>
       <div class="fog fog-a" aria-hidden="true"></div>
@@ -17,9 +17,13 @@
       <div id="stage">
         <p id="spirit-line" aria-live="polite"></p>
         <div id="table">
-          <svg id="board" role="img" aria-label="A wooden talking board with a planchette"></svg>
-          <div class="board-shade" aria-hidden="true"></div>
-          <div class="board-light" aria-hidden="true"></div>
+          <div id="surface">
+            <svg id="board" role="img" aria-label="A black and silver talking board with a planchette"></svg>
+            <div class="board-shade" aria-hidden="true"></div>
+            <div class="board-tint" aria-hidden="true"></div>
+            <div class="board-pools" aria-hidden="true"></div>
+          </div>
+          <svg id="hand" aria-hidden="true"></svg>
           <div class="candle tl" style="--i: 0" aria-hidden="true">
             <div class="pool"></div>
             <div class="wax"></div>
@@ -49,7 +53,7 @@
             <div class="smoke"></div>
           </div>
         </div>
-        <div id="slip"><p id="ink-line" aria-live="polite"></p></div>
+        <div id="slip" title="Tap to rub out a letter"><p id="ink-line" aria-live="polite"></p></div>
         <p id="hint"></p>
       </div>
 
@@ -67,7 +71,7 @@
 
       <section id="endcard" hidden aria-label="The séance has ended">
         <div class="card">
-          <svg class="endcard-sigil" viewBox="-60 -60 120 120" aria-hidden="true"><path /></svg>
+          <div class="endcard-halo" aria-hidden="true"></div>
           <h2 class="endcard-name"></h2>
           <p class="endcard-epitaph"></p>
           <p class="endcard-stats"></p>

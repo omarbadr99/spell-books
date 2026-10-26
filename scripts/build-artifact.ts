@@ -9,7 +9,7 @@ import { build } from "vite";
 
 const OUT = "dist-artifact";
 const FONTS =
-  "https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=IM+Fell+English:ital@0;1&display=swap";
+  "https://fonts.googleapis.com/css2?family=Kalnia:wght@700&family=IM+Fell+English:ital@0;1&display=swap";
 
 await build({ configFile: "vite.artifact.config.ts", logLevel: "warn" });
 
@@ -21,7 +21,7 @@ const read = (ext: string) =>
     .map((f) => readFileSync(`${OUT}/assets/${f}`, "utf8"))
     .join("\n");
 
-const body = html.match(/<body>([\s\S]*)<\/body>/)?.[1].replace(/<script\b[^>]*><\/script>/g, "").trim();
+const body = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1].replace(/<script\b[^>]*><\/script>/g, "").trim();
 if (!body) throw new Error("index.html has no body to publish");
 
 // The artifact host wraps this in its own <html>/<head>/<body>, so the page starts with its title and styles.

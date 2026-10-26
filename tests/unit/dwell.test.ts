@@ -69,6 +69,23 @@ describe("DwellDetector", () => {
     expect(hold(d, 100, 2016, 800)).toEqual(["A"]);
   });
 
+  it("acts on a glyph with no wait as soon as the glass stops on it, not while it passes", () => {
+    const d = new DwellDetector((x) => hit(x), { dwellMs: 700, dwellFor: (id) => (id === "B" ? 0 : 700), maxSpeed: 250 });
+    const picked: string[] = [];
+    // Sweeping across B at 500 units a second.
+    for (let t = 0; t <= 320; t += 16) {
+      const s = d.update(t, 220 + t * 0.5, 0);
+      if (s.selected) picked.push(s.selected);
+    }
+    expect(picked).toEqual([]);
+    // Stopping on it: chosen within a few frames.
+    expect(hold(d, 300, 336, 100)).toEqual(["B"]);
+    // While the planchette still trails the fingers, it waits.
+    const trailing = new DwellDetector((x) => hit(x), { dwellMs: 700, dwellFor: () => 0, maxSpeed: 250 });
+    expect(trailing.update(0, 300, 0, false).selected).toBeNull();
+    expect(trailing.update(16, 300, 0, true).selected).toBe("B");
+  });
+
   it("keeps the last letter blocked across a release, but not across a reset", () => {
     const d = make();
     hold(d, 100, 0, 800);

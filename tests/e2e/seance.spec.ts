@@ -1,6 +1,6 @@
 // A whole séance in the browser with canned spirits: the lock, lighting the
-// candles with HI, asking from the center, unsaying and goodbye. Runs the spirits
-// 5× faster than life.
+// candles with HI, asking from the center, rubbing out a letter and goodbye.
+// Runs the spirits 5× faster than life.
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -19,8 +19,8 @@ declare global {
 }
 
 const SPEED = 5;
-/** Time for the fingers to settle, the planchette to catch up and the glass to dwell (700 ms). */
-const SETTLE_MS = 120 + 300 + 700 + 250;
+/** Time for the fingers to settle, the planchette to catch up and the glass to dwell (130 ms). */
+const SETTLE_MS = 120 + 300 + 130 + 250;
 /** Fingers rest a little below the glass, on the planchette's body. */
 const GRIP = 18;
 
@@ -45,6 +45,16 @@ async function spell(page: Page, ...ids: string[]) {
     await page.mouse.move(target!.x, target!.y + GRIP, { steps: 10 });
     await page.waitForTimeout(SETTLE_MS);
   }
+  await page.mouse.up();
+}
+
+/** Drags the planchette back to the center and lets go at once, without resting there. */
+async function flickHome(page: Page) {
+  const start = await lens(page);
+  const center = await glyph(page, "CENTER");
+  await page.mouse.move(start.x, start.y + GRIP);
+  await page.mouse.down();
+  await page.mouse.move(center!.x, center!.y + GRIP, { steps: 6 });
   await page.mouse.up();
 }
 
@@ -82,16 +92,19 @@ test("a séance from the lock to goodbye", async ({ page }, testInfo) => {
   expect(await lastTarget(page)).toBe("YES");
   expect(await spiritLine(page)).toBe("YES");
 
-  // ? still works for asking, and asking who it is engraves the name.
-  await spell(page, "W", "H", "O", "ASK");
+  // Letting go in the center sends too, and asking who it is writes its name under the moon.
+  await spell(page, "W", "H", "O");
+  await flickHome(page);
   await phaseBecomes(page, "answering");
   await phaseBecomes(page, "listening");
   await expect(page.locator(".nameplate.engraved")).toHaveCount(1);
 
-  // UNSAY takes a letter back.
-  await spell(page, "X");
+  // Tapping the paper rubs out the last letter.
+  await spell(page, "X", "Y");
+  expect(await ink(page)).toBe("XY");
+  await page.locator("#slip").click();
   expect(await ink(page)).toBe("X");
-  await spell(page, "UNSAY");
+  await page.locator("#slip").click();
   expect(await ink(page)).toBe("");
 
   // Saying goodbye: the spirit spells its farewell, rests on GOOD BYE, the candles go out.

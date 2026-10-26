@@ -4,8 +4,11 @@
 import type { Point } from "../board/layout";
 import type { BoardView } from "../board/render";
 
-const GRAB_RADIUS = 128;
+/** The planchette's body, which fingers can take hold of: an ellipse around the glass and below it. */
+const BODY = { dy: 52, rx: 120, ry: 152 };
 const EDGE = 44;
+/** Finger movement smaller than this (board units) is jitter, not a move. */
+const JITTER = 10;
 
 export class Planchette {
   pos: Point = { x: 0, y: 0 };
@@ -17,8 +20,9 @@ export class Planchette {
   /** Extra tilt a spirit can add, in degrees. */
   tilt = 0;
   private target: Point = { x: 0, y: 0 };
-  /** When the sitters' fingers last moved the planchette's target. */
+  /** When the sitters' fingers last moved, and where they were. */
   private movedAt = 0;
+  private anchor: Point = { x: 0, y: 0 };
   private grabOffset: Point = { x: 0, y: 0 };
   private prev: Point = { x: 0, y: 0 };
   private velocity: Point = { x: 0, y: 0 };
@@ -34,19 +38,25 @@ export class Planchette {
   }
 
   canGrab(p: Point): boolean {
-    return Math.hypot(p.x - this.pos.x, p.y - this.pos.y) <= GRAB_RADIUS * this.view.layout.planchetteScale;
+    const s = this.view.layout.planchetteScale;
+    return Math.hypot((p.x - this.pos.x) / (BODY.rx * s), (p.y - this.pos.y - BODY.dy * s) / (BODY.ry * s)) <= 1;
   }
 
   grab(p: Point): void {
     this.held = true;
     this.grabOffset = { x: this.pos.x - p.x, y: this.pos.y - p.y };
     this.target = { ...this.pos };
+    this.anchor = { ...this.pos };
+    this.movedAt = performance.now();
   }
 
   dragTo(p: Point): void {
     if (!this.held || this.driven) return;
     const next = this.clamp({ x: p.x + this.grabOffset.x, y: p.y + this.grabOffset.y });
-    if (Math.hypot(next.x - this.target.x, next.y - this.target.y) > 3) this.movedAt = performance.now();
+    if (Math.hypot(next.x - this.anchor.x, next.y - this.anchor.y) > JITTER) {
+      this.movedAt = performance.now();
+      this.anchor = next;
+    }
     this.target = next;
   }
 
@@ -73,8 +83,9 @@ export class Planchette {
     this.speed = Math.hypot(this.velocity.x, this.velocity.y);
     this.prev = { ...this.pos };
 
-    const lean = Math.max(-13, Math.min(13, this.velocity.x * 0.011)) + this.tilt;
-    this.angle += (lean - this.angle) * (1 - Math.exp(-dt / 0.14));
+    // It turns a few degrees into a sideways move, the way wood drags on felt.
+    const lean = Math.max(-8, Math.min(8, this.velocity.x * 0.006)) + this.tilt;
+    this.angle += (lean - this.angle) * (1 - Math.exp(-dt / 0.24));
     this.view.drawPlanchette(this.pos, this.angle);
   }
 
@@ -84,7 +95,12 @@ export class Planchette {
    */
   settled(now: number): boolean {
     const lag = Math.hypot(this.target.x - this.pos.x, this.target.y - this.pos.y);
-    return lag < 16 && now - this.movedAt > 120;
+    return lag < 18 && now - this.movedAt > 80;
+  }
+
+  /** Where the sitters' fingers are taking the planchette. */
+  get aim(): Point {
+    return { ...this.target };
   }
 
   private clamp(p: Point): Point {

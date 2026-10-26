@@ -1,14 +1,16 @@
 # Spirit Board
 
-A candlelit talking board where AI spirits answer. You spell a question by
-dragging the planchette from letter to letter, then bring it back to the center
-of the board. Your ink soaks into the paper, the planchette pulls away from your
-fingers, and a spirit spells its reply on its own. The idea comes from Maxime
-Rivest's Tom Riddle diary for the reMarkable.
+A talking board where AI spirits answer. It starts in black and silver under a
+dotted moon. Spell HI and the candles light, the board takes on their color, and
+a spirit arrives. You spell a question by dragging the planchette from letter to
+letter, then bring it back to the center of the board. Your ink soaks into the
+paper, the planchette pulls away from your fingers, and the spirit spells its
+reply on its own, usually in a single word. The idea comes from Maxime Rivest's
+Tom Riddle diary for the reMarkable.
 
 <p align="center">
-  <img src="docs/board-desktop.jpg" alt="The board on a laptop: a spirit has just spelled LINE OPEN STOP" width="640">
-  <img src="docs/board-phone.jpg" alt="The board on a phone, with a question spelled on the paper slip" width="200">
+  <img src="docs/board-desktop.jpg" alt="The board on a laptop in purple candlelight: the spirit has just spelled KEVIN, and its name is written under the moon" width="640">
+  <img src="docs/board-phone.jpg" alt="The board on a phone in black and white before the candles are lit, with HI spelled on the paper slip" width="200">
 </p>
 
 There is no typing anywhere. Even the word that unlocks the board is spelled
@@ -16,25 +18,27 @@ with the planchette.
 
 ## How to play
 
-- **Spell with the planchette.** Drag it and rest its glass on a letter for
-  about a second. When the ring fills, the letter is written on the paper slip.
-  Letters run together the way they do on a real board (`WHATISYOURNAME`), and
-  the spirit reads them fine. To spell a double letter, nudge off the letter
-  and back on. **✕ UNSAY** erases the last letter.
-- **Send it from the center.** Bring the planchette back to the ring in the
-  middle of the board and rest it there. That sends whatever is on the slip.
-  (**? ASK** does the same.)
+- **Spell with the planchette.** Drag it and pause with its glass on a letter.
+  A brief pause is enough: the letter is written on the paper slip. Letters run
+  together the way they do on a real board (`WHATISYOURNAME`), and the spirit
+  reads them fine. To spell a double letter, nudge off the letter and back on.
+  Tap the paper slip to rub out the last letter.
+- **Send it from the center.** Bring the planchette back to the ring of dots in
+  the middle of the board. It sends whatever is on the slip the moment it stops
+  there, or as soon as you let go of it there.
 - **Unlock the board.** A new device starts locked. Spell the secret word and
   bring the planchette back to the center. A wrong word sends it to **NO**.
   Each device stays unlocked for 30 days.
-- **Say HI to start.** The room is dark and the four candles are out. Spell
-  `HI` and return to the center: the candles light one by one and one of 12
-  spirits arrives and answers. Its candles burn in one of four colors (orange,
-  red, purple or green), which tint the room, and it has its own sigil, sound
-  and way of moving.
-- **Ask anything.** On an empty slip, **YES** or **NO** answers the spirit's own
-  question straight away. Ask `WHOAREYOU` and its name is engraved on the brass
-  plate under its sigil.
+- **Say HI to start.** The board is black and silver, lit only by the moon, and
+  the four candles are out. Spell `HI` and return to the center: the candles
+  light one by one and one of 12 spirits arrives and answers. Its candles burn
+  in one of four colors (orange, red, purple or green), which light up the
+  room and the board. Each spirit also has its own sound and way of moving the
+  planchette.
+- **Ask anything.** Spirits answer in a word when they can, and in two or three
+  only when one won't do. On an empty slip, **YES** or **NO** answers the
+  spirit's own question straight away. Ask `WHOAREYOU` and its name appears
+  under the moon.
 - **End the séance.** Rest the glass on **GOOD BYE**. Spirits also leave on
   their own if you're rude. The candles go out and an end card shows who you
   met, ready to be the last shot of a video. Touch the card, then spell `HI`
@@ -116,7 +120,7 @@ your friends the link and the board word. To change the word later, run
 
 ## What it costs
 
-The spirits run on **Claude Haiku 5.5**. Replies are a few words, so one
+The spirits run on **Claude Haiku 5.5**. Replies are a word or two, so one
 question costs roughly $0.0002, and 1,000 questions cost about 20 cents. The
 spirit's instructions are cached between questions, which cuts the cost
 further.
@@ -137,15 +141,18 @@ Safety nets:
 Each spirit has two halves:
 
 - `shared/presence.ts` holds what everyone sees: name, epitaph, candle color
-  (one of the four in `CANDLE_COLORS`), sigil, motion style, sound, and the
-  opening and farewell lines.
+  (one of the four in `CANDLE_COLORS`), motion style, sound, and the opening
+  and farewell lines. The motion style sets how the spirit moves the
+  planchette: its speed, how much its paths bow, how unsteady it is, how long
+  it rests on each letter, how far it slides past a letter, and how long it
+  pauses before setting off.
 - `worker/spirits.ts` holds what only the server knows: voice, secret, how it
   dodges questions too big for a board, and 5–6 example exchanges. The
   examples set the tone more than anything else.
 
-The rules every spirit follows are in `BASE_RULES` in the same file: one to
-five words, YES or NO when it fits, leave when insulted, and gentle
-guardrails.
+The rules every spirit follows are in `BASE_RULES` in the same file: one word
+(two or three only when one can't carry it), YES or NO when it fits, leave when
+insulted, and gentle guardrails.
 
 To hear how they actually sound before you film:
 
@@ -167,8 +174,14 @@ is complete and that its lines fit on the board.
   no framework.
   - The board layouts are data (`src/board/layout.ts`): two arcs of letters
     on wide screens, three arcs on phones held upright.
-  - The wood is painted procedurally.
-  - The planchette's glass magnifies the letters underneath it.
+  - The board's surface is stippled procedurally in dots
+    (`src/board/stipple.ts`): star dust, a moon and banks of cloud.
+  - The candlelight is CSS laid over the board, which tints its silver.
+  - The planchette has its own SVG layer over the board, so the board stays
+    still while it moves. Its glass magnifies the letters underneath it.
+  - A spirit moves the planchette the way fingers do
+    (`src/planchette/possess.ts`): a pause before it sets off, a smooth glide
+    that bows a little, a slide past the letter and a pull back.
   - Every sound is synthesized with Web Audio, so there are no audio files.
 - **Server** (`worker/api.ts`) answers three endpoints: `/api/me`,
   `/api/enter` and `/api/ask`. It checks the signed cookie, validates and

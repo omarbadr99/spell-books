@@ -132,8 +132,12 @@ export class SoundScape {
     this.tone(this.root * 2, t, 0.35, "sine", 0.03);
   }
 
-  tap(): void {
-    if (this.ctx) this.burst(this.ctx.currentTime, 0.014, "bandpass", 2400, 4, 0.2);
+  /** A letter rubbed off the paper: two soft strokes of an eraser. */
+  rub(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.wash(t, 0.12, 2600, 0.05);
+    this.wash(t + 0.13, 0.1, 2200, 0.035);
   }
 
   /** Candles gutter out. */
