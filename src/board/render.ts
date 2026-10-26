@@ -155,7 +155,13 @@ export class BoardView {
         "font-size": size, ...extra,
       }, g).appendChild(document.createTextNode(label));
 
-    if (el.id === "UNSAY") {
+    if (el.id === "CENTER") {
+      svg("circle", { cx: el.x, cy: el.y, r: el.rx * 0.95, class: "stroke", fill: "none", "stroke-width": 2.4, opacity: 0.55 }, g);
+      svg("circle", { cx: el.x, cy: el.y, r: el.rx * 0.78, class: "stroke", fill: "none", "stroke-width": 1, opacity: 0.4 }, g);
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+        svg("path", { d: star(el.x + dx * el.rx * 0.95, el.y + dy * el.rx * 0.95, 9), opacity: 0.8 }, g);
+      }
+    } else if (el.id === "UNSAY") {
       const s = el.size * 0.32;
       svg("path", {
         d: `M ${el.x - s} ${el.y - s - 8} L ${el.x + s} ${el.y + s - 8} M ${el.x + s} ${el.y - s - 8} L ${el.x - s} ${el.y + s - 8}`,
@@ -254,6 +260,12 @@ export class BoardView {
   setFlicker(on: boolean): void {
     this.planchette.classList.toggle("flicker", on);
     this.lensTop.classList.toggle("flicker", on);
+  }
+
+  /** The center ring calls the planchette home while something is spelled. */
+  beckon(on: boolean): void {
+    this.glyphs.get("CENTER")?.classList.toggle("beckon", on);
+    this.glows.get("CENTER")?.classList.toggle("beckon", on);
   }
 
   hover(id: string | null): void {

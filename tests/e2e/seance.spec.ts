@@ -1,5 +1,6 @@
-// A whole séance in the browser with canned spirits: the lock, summoning,
-// asking, unsaying and goodbye. Runs the spirits 5× faster than life.
+// A whole séance in the browser with canned spirits: the lock, lighting the
+// candles with HI, asking from the center, unsaying and goodbye. Runs the spirits
+// 5× faster than life.
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -18,8 +19,8 @@ declare global {
 }
 
 const SPEED = 5;
-/** Time for the planchette to catch up and the glass to dwell (700 ms / SPEED). */
-const SETTLE_MS = 300 + 700 / SPEED + 220;
+/** Time for the fingers to settle, the planchette to catch up and the glass to dwell (700 ms). */
+const SETTLE_MS = 120 + 300 + 700 + 250;
 /** Fingers rest a little below the glass, on the planchette's body. */
 const GRIP = 18;
 
@@ -47,45 +48,41 @@ async function spell(page: Page, ...ids: string[]) {
   await page.mouse.up();
 }
 
-async function touchPlanchette(page: Page) {
-  const at = await lens(page);
-  await page.mouse.move(at.x, at.y + GRIP);
-  await page.mouse.down();
-  await page.mouse.up();
-}
-
 test("a séance from the lock to goodbye", async ({ page }, testInfo) => {
   await page.goto(`/?speed=${SPEED}`);
   await phaseBecomes(page, "locked");
 
-  // A wrong word: the planchette jerks to NO and the board stays locked.
+  // A wrong word, sent by bringing the planchette back to the center: it jerks to NO.
   await spell(page, "A", "B");
   expect(await ink(page)).toBe("AB");
-  await spell(page, "ASK");
+  await spell(page, "CENTER");
   await phaseBecomes(page, "unlocking");
   await phaseBecomes(page, "locked");
   expect(await lastTarget(page)).toBe("NO");
 
-  // The right word wakes the board.
-  await spell(page, "O", "W", "L", "ASK");
+  // The right word unlocks the board, which stays dark.
+  await spell(page, "O", "W", "L", "CENTER");
   await phaseBecomes(page, "dormant");
+  await expect(page.locator("#room.candles-lit")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("dark.png") });
 
-  // Touching the planchette summons a spirit, which spells its opener.
-  await touchPlanchette(page);
+  // Spelling HI lights the candles and calls a spirit, which spells its opener.
+  await spell(page, "H", "I", "CENTER");
   await phaseBecomes(page, "summoning");
   expect(await page.evaluate(() => window.__board.spirit())).toBeTruthy();
+  await expect(page.locator("#room.candles-lit")).toHaveCount(1);
   await phaseBecomes(page, "listening");
   expect((await spiritLine(page)).trim()).not.toBe("");
   await page.screenshot({ path: testInfo.outputPath("listening.png") });
 
-  // A yes/no question lands on YES.
-  await spell(page, "I", "S", "ASK");
+  // A yes/no question, sent from the center, lands on YES.
+  await spell(page, "I", "S", "CENTER");
   await phaseBecomes(page, "answering");
   await phaseBecomes(page, "listening");
   expect(await lastTarget(page)).toBe("YES");
   expect(await spiritLine(page)).toBe("YES");
 
-  // Asking who it is engraves the name.
+  // ? still works for asking, and asking who it is engraves the name.
   await spell(page, "W", "H", "O", "ASK");
   await phaseBecomes(page, "answering");
   await phaseBecomes(page, "listening");
@@ -97,10 +94,11 @@ test("a séance from the lock to goodbye", async ({ page }, testInfo) => {
   await spell(page, "UNSAY");
   expect(await ink(page)).toBe("");
 
-  // Saying goodbye: the spirit spells its farewell, rests on GOOD BYE, and the card shows.
+  // Saying goodbye: the spirit spells its farewell, rests on GOOD BYE, the candles go out.
   await spell(page, "GOODBYE");
   await phaseBecomes(page, "ended");
   expect(await lastTarget(page)).toBe("GOODBYE");
+  await expect(page.locator("#room.candles-lit")).toHaveCount(0);
   await expect(page.locator("#endcard")).toBeVisible();
   await expect(page.locator(".endcard-stats")).toContainText("2 questions asked");
   await page.screenshot({ path: testInfo.outputPath("endcard.png") });

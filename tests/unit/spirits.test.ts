@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickSpirit, SPIRITS } from "../../shared/presence";
+import { CANDLE_COLORS, pickSpirit, SPIRITS } from "../../shared/presence";
 import { MAX_REPLY_CHARS, normalizeBoardWord, sanitizeReply } from "../../shared/text";
 import { buildSystemPrompt, PERSONAS } from "../../worker/spirits";
 
@@ -9,10 +9,16 @@ const boardClean = (line: string) => {
 };
 
 describe("spirit roster", () => {
-  it("has twelve spirits with unique ids, colors and sigils", () => {
+  it("has twelve spirits with unique ids and sigils", () => {
     expect(SPIRITS).toHaveLength(12);
-    for (const key of ["id", "color", "sigil"] as const) {
+    for (const key of ["id", "sigil"] as const) {
       expect(new Set(SPIRITS.map((s) => s[key])).size, key).toBe(SPIRITS.length);
+    }
+  });
+
+  it("lights the candles in each of the four colors for three spirits", () => {
+    for (const color of Object.values(CANDLE_COLORS)) {
+      expect(SPIRITS.filter((s) => s.color === color), color).toHaveLength(3);
     }
   });
 

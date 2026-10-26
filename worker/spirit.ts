@@ -4,13 +4,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { REFUSAL_REPLY, type Turn } from "../shared/seance";
 import { sanitizeReply } from "../shared/text";
-import { buildSystemPrompt, SEANCE_START, type SpiritPersona } from "./spirits";
+import { buildSystemPrompt, seanceStart, type SpiritPersona } from "./spirits";
 
 export type SpiritAnswer = { kind: "reply"; reply: string } | { kind: "silent" } | { kind: "busy" };
 
-export function buildMessages(opener: string, history: Turn[], question: string): Anthropic.MessageParam[] {
+export function buildMessages(opener: string, history: Turn[], question: string, greeting = ""): Anthropic.MessageParam[] {
   return [
-    { role: "user", content: SEANCE_START },
+    { role: "user", content: seanceStart(greeting) },
     { role: "assistant", content: opener },
     ...history.map((turn): Anthropic.MessageParam => ({
       role: turn.from === "sitters" ? "user" : "assistant",

@@ -17,6 +17,7 @@ export interface ApiDeps {
 interface AskBody {
   spiritId: string;
   openerIndex: number;
+  greeting: string;
   history: Turn[];
   question: string;
 }
@@ -38,7 +39,7 @@ export async function handleApi(request: Request, env: Env, deps: ApiDeps): Prom
     }
 
     case "POST /api/enter": {
-      const ip = request.headers.get("CF-Connecting-IP") ?? "local";
+      const ip = clientIp(request);
       if (!(await env.ENTER_LIMITER.limit({ key: ip })).success) return json({ error: "slow" }, 429);
       const body = await readJson<{ word?: unknown }>(request);
       const word = typeof body?.word === "string" ? body.word.slice(0, MAX_QUESTION_CHARS) : "";
@@ -68,7 +69,7 @@ export async function handleApi(request: Request, env: Env, deps: ApiDeps): Prom
         deps.createClient(env.ANTHROPIC_API_KEY),
         env.SPIRIT_MODEL,
         personaFor(spirit.id)!,
-        buildMessages(opener, ask.history, ask.question),
+        buildMessages(opener, ask.history, ask.question, ask.greeting),
       );
       if (answer.kind === "busy") return json({ error: "slow" }, 429);
       if (answer.kind === "silent") return json({ error: "silent" }, 502);
@@ -78,6 +79,16 @@ export async function handleApi(request: Request, env: Env, deps: ApiDeps): Prom
     default:
       return json({ error: "not found" }, 404);
   }
+}
+
+/** The caller's address, from Cloudflare's header or the usual proxy headers (Vercel). */
+function clientIp(request: Request): string {
+  return (
+    request.headers.get("CF-Connecting-IP") ??
+    request.headers.get("X-Real-IP") ??
+    request.headers.get("X-Forwarded-For")?.split(",")[0].trim() ??
+    "local"
+  );
 }
 
 async function readJson<T = unknown>(request: Request): Promise<T | null> {
@@ -91,12 +102,13 @@ async function readJson<T = unknown>(request: Request): Promise<T | null> {
 /** Validates an ask body; sitters' turns must alternate with the spirit's, sitters first. */
 export function parseAsk(body: unknown): AskBody | null {
   if (!body || typeof body !== "object") return null;
-  const { spiritId, openerIndex, history, question } = body as Record<string, unknown>;
+  const { spiritId, openerIndex, greeting, history, question } = body as Record<string, unknown>;
   if (typeof spiritId !== "string" || !spiritById(spiritId) || !personaFor(spiritId)) return null;
   const spirit = spiritById(spiritId)!;
   if (typeof openerIndex !== "number" || !Number.isInteger(openerIndex) || !spirit.openers[openerIndex]) return null;
   if (!Array.isArray(history) || history.length > MAX_HISTORY || history.length % 2 !== 0) return null;
   if (typeof question !== "string") return null;
+  if (greeting !== undefined && typeof greeting !== "string") return null;
 
   const turns: Turn[] = [];
   for (const [i, raw] of history.entries()) {
@@ -111,5 +123,5 @@ export function parseAsk(body: unknown): AskBody | null {
 
   const cleanQuestion = sanitizeQuestion(question);
   if (!cleanQuestion) return null;
-  return { spiritId, openerIndex, history: turns, question: cleanQuestion };
+  return { spiritId, openerIndex, greeting: sanitizeQuestion(greeting ?? ""), history: turns, question: cleanQuestion };
 }

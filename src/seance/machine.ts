@@ -1,4 +1,6 @@
-// The séance itself: the lock, summoning, asking, answering and goodbye.
+// The séance itself: the lock, the greeting that lights the candles, asking,
+// answering and goodbye. Whatever the sitters spell is sent when they bring
+// the planchette back to the center of the board (or rest it on ?).
 //
 // locked → unlocking → dormant → summoning → listening ⇄ asking → answering → ending → ended
 
@@ -17,12 +19,16 @@ import { markMet, type EndCard } from "./endcard";
 import type { InkLine, SpiritLine } from "./lines";
 
 const HINTS = {
-  locked: "The board answers only to those who know the word.",
-  lockedSpelling: "Rest the glass on ? to speak the word.",
+  locked: "Spell the secret word, then bring the planchette back to the center.",
   unprepared: "The board has not been prepared yet. See the README.",
-  dormant: "Place your fingers on the planchette.",
-  listening: "Rest the glass on a letter to spell. ✕ unsays, ? asks.",
+  dormant: "Spell HI with the planchette, then bring it back to the center.",
+  listening: "Spell your question, then bring the planchette back to the center to ask.",
+  send: "Bring the planchette back to the center to send it.",
+  unlocked: "The board knows you now. Spell HI to light the candles.",
 };
+
+/** Glyphs that send what the sitters spelled. */
+const SENDS = new Set(["CENTER", "ASK"]);
 
 export interface SeanceParts {
   room: Room;
@@ -45,6 +51,7 @@ export class Seance {
   spirit: PublicSpirit | null = null;
   private lastSpiritId: string | null = null;
   private openerIndex = 0;
+  private greeting = "";
   private history: Turn[] = [];
   private named = false;
   private questions = 0;
@@ -55,29 +62,55 @@ export class Seance {
   async boot(): Promise<void> {
     this.parts.room.setSpirit(null);
     const seat = await api.checkSeat();
-    if (seat === "seated") this.toDormant();
-    else this.toLocked(seat === "unprepared" ? HINTS.unprepared : (api.LOCK_HINT ?? HINTS.locked));
+    if (seat === "seated") this.toDormant(HINTS.dormant);
+    else this.toLocked(seat === "unprepared" ? HINTS.unprepared : HINTS.locked);
   }
 
   /** The sitters may move the planchette themselves. */
   get sittersHaveIt(): boolean {
-    return this.phase === "locked" || this.phase === "listening";
+    return this.phase === "locked" || this.phase === "dormant" || this.phase === "listening";
   }
 
   get inkText(): string {
     return this.parts.ink.text;
   }
 
-  /** Fingers come to rest on the planchette. */
-  onGrab(): void {
-    this.parts.sound.unlock();
-    if (this.phase === "dormant") void this.summon();
-  }
-
   /** The glass rested long enough on a glyph. */
   onSelect(el: BoardElement): void {
-    if (this.phase === "locked") this.lockInput(el);
-    else if (this.phase === "listening") this.listenInput(el);
+    if (!this.sittersHaveIt) return;
+    const { ink, view, sound, room } = this.parts;
+    if (SENDS.has(el.id)) {
+      if (ink.empty) return;
+      view.flash(el.id, 600);
+      sound.knock();
+      if (this.phase === "locked") void this.speakWord();
+      else if (this.phase === "dormant") void this.summon();
+      else void this.ask();
+      return;
+    }
+
+    if (el.id === "GOODBYE") {
+      if (this.phase !== "listening") return;
+      view.flash(el.id, 500);
+      sound.knock();
+      void this.sittersLeave();
+      return;
+    }
+
+    view.flash(el.id, 500);
+    sound.knock();
+    if (el.id === "UNSAY") {
+      ink.unsay();
+    } else if (el.id === "YES" || el.id === "NO") {
+      // On an empty slip, YES or NO is an answer to the spirit's own question.
+      const answering = ink.empty && this.phase === "listening";
+      ink.addWord(el.id);
+      if (answering) return void this.ask();
+    } else {
+      ink.add(el.label);
+    }
+    view.beckon(!ink.empty);
+    room.hint(ink.empty ? this.restingHint() : this.phase === "listening" && this.taught ? "" : HINTS.send);
   }
 
   /** Re-applies what's drawn on the board after it is re-rendered for a new layout. */
@@ -94,7 +127,13 @@ export class Seance {
     this.spirit = null;
     view.engraveName(null);
     spiritLine.begin();
-    this.toDormant();
+    this.toDormant(HINTS.dormant);
+  }
+
+  private restingHint(): string {
+    if (this.phase === "locked") return HINTS.locked;
+    if (this.phase === "dormant") return HINTS.dormant;
+    return this.taught ? "" : HINTS.listening;
   }
 
   private setPhase(phase: Phase): void {
@@ -110,6 +149,7 @@ export class Seance {
     dwell.release();
     view.setDwell(0);
     view.hover(null);
+    view.beckon(false);
   }
 
   private giveBack(): void {
@@ -123,29 +163,15 @@ export class Seance {
     this.parts.room.hint(hint);
   }
 
-  private toDormant(): void {
-    const { room, possessor } = this.parts;
+  private toDormant(hint: string): void {
+    const { room, possessor, dwell } = this.parts;
     this.setPhase("dormant");
-    this.parts.planchette.driven = true;
+    this.giveBack();
+    dwell.reset();
     possessor.style = STILL_AIR;
     room.setSpirit(null);
-    room.setGuttering(false);
-    room.hint(HINTS.dormant);
-  }
-
-  private lockInput(el: BoardElement): void {
-    const { ink, view, sound, room } = this.parts;
-    if (el.kind === "letter" || el.kind === "digit") {
-      ink.add(el.label);
-      room.hint(HINTS.lockedSpelling);
-    } else if (el.id === "UNSAY") {
-      ink.unsay();
-    } else if (el.id !== "ASK" || ink.empty) {
-      return;
-    }
-    view.flash(el.id, 500);
-    sound.knock();
-    if (el.id === "ASK") void this.speakWord();
+    room.setCandles(false);
+    room.hint(hint);
   }
 
   private async speakWord(): Promise<void> {
@@ -159,19 +185,21 @@ export class Seance {
       sound.wake();
       room.shudder();
       await possessor.home();
-      this.toDormant();
+      this.toDormant(HINTS.unlocked);
       return;
     }
     await possessor.lunge("NO", (id) => view.flash(id, 1500));
     await this.parts.sleep(700);
     await possessor.home();
-    this.toLocked(result === "unprepared" ? HINTS.unprepared : (api.LOCK_HINT ?? HINTS.locked));
+    this.toLocked(result === "unprepared" ? HINTS.unprepared : HINTS.locked);
   }
 
+  /** The sitters' first words light the candles and call a spirit, which answers with its opener. */
   private async summon(): Promise<void> {
     const { room, view, possessor, sound, ink, spiritLine, dwell } = this.parts;
     this.setPhase("summoning");
     this.takeOver();
+    this.greeting = ink.soak();
     const spirit = pickSpirit(this.lastSpiritId);
     this.spirit = spirit;
     this.openerIndex = Math.floor(Math.random() * spirit.openers.length);
@@ -179,19 +207,17 @@ export class Seance {
     this.named = false;
     this.questions = 0;
     markMet(spirit.id);
-    ink.clear();
     spiritLine.begin();
     view.engraveName(null);
     dwell.reset();
     room.hint("");
 
-    sound.gutter();
-    room.setGuttering(true);
-    await this.parts.sleep(1000);
+    await this.parts.sleep(700);
     room.setSpirit(spirit);
+    room.setCandles(true);
     possessor.style = spirit.motion;
     sound.summon(spirit.sound);
-    room.setGuttering(false);
+    await this.parts.sleep(900);
     view.setSigil(spirit, "burn");
     window.setTimeout(() => {
       if (this.spirit === spirit && this.phase !== "ending" && this.phase !== "ended") view.setSigil(spirit, "scorch");
@@ -203,36 +229,11 @@ export class Seance {
   }
 
   private listen(): void {
+    const { ink, room, view } = this.parts;
     this.setPhase("listening");
     this.giveBack();
-    this.parts.room.hint(this.taught ? "" : HINTS.listening);
-  }
-
-  private listenInput(el: BoardElement): void {
-    const { ink, view, sound } = this.parts;
-    if (el.id === "ASK" && ink.empty) return;
-    view.flash(el.id, 500);
-    sound.knock();
-    switch (el.id) {
-      case "UNSAY":
-        ink.unsay();
-        return;
-      case "ASK":
-        void this.ask();
-        return;
-      case "GOODBYE":
-        void this.sittersLeave();
-        return;
-      case "YES":
-      case "NO": {
-        const answering = ink.empty;
-        ink.addWord(el.id);
-        if (answering) void this.ask();
-        return;
-      }
-      default:
-        ink.add(el.label);
-    }
+    view.beckon(!ink.empty);
+    room.hint(ink.empty ? this.restingHint() : HINTS.send);
   }
 
   private async ask(): Promise<void> {
@@ -247,6 +248,7 @@ export class Seance {
     const result = await api.ask({
       spiritId: spirit.id,
       openerIndex: this.openerIndex,
+      greeting: this.greeting,
       history: this.history.slice(-MAX_HISTORY),
       question,
     });
@@ -308,15 +310,16 @@ export class Seance {
     await this.end();
   }
 
+  /** The candles go out one by one and the end card shows who came. */
   private async end(): Promise<void> {
     const { room, view, sound, endCard, possessor } = this.parts;
     const spirit = this.spirit!;
     this.setPhase("ending");
     sound.gutter();
     sound.release();
-    room.setGuttering(true);
+    room.setCandles(false);
     view.setSigil(spirit, "fade");
-    await this.parts.sleep(1700);
+    await this.parts.sleep(1900);
     this.lastSpiritId = spirit.id;
     possessor.style = STILL_AIR;
     endCard.show(spirit, this.named, this.questions);
@@ -332,6 +335,7 @@ export class Seance {
     spiritLine.begin();
     this.spirit = null;
     room.setSpirit(null);
-    this.toLocked(api.LOCK_HINT ?? HINTS.locked);
+    room.setCandles(false);
+    this.toLocked(HINTS.locked);
   }
 }

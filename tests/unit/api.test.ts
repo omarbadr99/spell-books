@@ -4,7 +4,7 @@ import { SPIRITS } from "../../shared/presence";
 import { MAX_HISTORY, REFUSAL_REPLY } from "../../shared/seance";
 import { handleApi, type ApiDeps } from "../../worker/api";
 import { issueSeat, readSeat, SEAT_MAX_AGE, wordMatches } from "../../worker/auth";
-import { SEANCE_START } from "../../worker/spirits";
+import { seanceStart } from "../../worker/spirits";
 
 const limiter = (success = true) => ({ limit: vi.fn(async () => ({ success })) });
 
@@ -56,6 +56,7 @@ const silas = SPIRITS.find((s) => s.id === "silas")!;
 const goodAsk = {
   spiritId: "silas",
   openerIndex: 0,
+  greeting: "hi",
   history: [
     { from: "sitters", text: "areyoudead" },
     { from: "spirit", text: "SINCE 1911" },
@@ -143,7 +144,7 @@ describe("asking a spirit", () => {
     expect(params).not.toHaveProperty("thinking");
     expect(params.system).toContain("SILAS CRANE");
     expect(params.messages).toEqual([
-      { role: "user", content: SEANCE_START },
+      { role: "user", content: seanceStart("HI") },
       { role: "assistant", content: silas.openers[0] },
       { role: "user", content: "AREYOUDEAD" },
       { role: "assistant", content: "SINCE 1911" },
@@ -189,6 +190,7 @@ describe("asking a spirit", () => {
     ["an unknown spirit", { ...goodAsk, spiritId: "casper" }],
     ["an opener the spirit never spelled", { ...goodAsk, openerIndex: 9 }],
     ["an empty question", { ...goodAsk, question: "?!" }],
+    ["a greeting that isn't text", { ...goodAsk, greeting: 7 }],
     ["turns out of order", { ...goodAsk, history: [goodAsk.history[1], goodAsk.history[0]] }],
     ["an unanswered turn", { ...goodAsk, history: [goodAsk.history[0]] }],
     [

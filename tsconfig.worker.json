@@ -4,5 +4,5 @@
     "lib": ["ES2022"],
     "types": ["node"]
   },
-  "include": ["worker", "shared", "worker-configuration.d.ts", "tests/unit"]
+  "include": ["worker", "vercel", "shared", "worker-configuration.d.ts", "tests/unit"]
 }

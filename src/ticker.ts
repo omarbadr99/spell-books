@@ -9,7 +9,8 @@ export class Ticker {
 
   start(): void {
     const loop = (now: number) => {
-      const dt = Math.min(0.05, Math.max(0, (now - this.last) / 1000));
+      // Long frames still advance most of the way, so the planchette keeps up with the fingers.
+      const dt = Math.min(0.25, Math.max(0, (now - this.last) / 1000));
       this.last = now;
       for (const fn of [...this.fns]) {
         if (fn(now, dt) === false) this.fns.delete(fn);

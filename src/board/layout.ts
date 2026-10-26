@@ -12,7 +12,7 @@ export interface Point {
 }
 
 export interface BoardElement {
-  /** "A".."Z", "0".."9", "YES", "NO", "GOODBYE", "ASK" or "UNSAY". */
+  /** "A".."Z", "0".."9", "YES", "NO", "GOODBYE", "ASK", "UNSAY", or "CENTER" (where the planchette rests). */
   id: string;
   kind: ElementKind;
   label: string;
@@ -31,7 +31,7 @@ export interface BoardLayout {
   width: number;
   height: number;
   elements: BoardElement[];
-  /** Where the planchette sleeps, clear of every glyph. */
+  /** Where the planchette sleeps: the CENTER glyph, where resting sends what was spelled. */
   rest: Point;
   sigil: Point & { r: number };
   nameplate: Point & { w: number; h: number };
@@ -111,6 +111,7 @@ function wideLayout(): BoardLayout {
     word("UNSAY", "✕", "action", 420, 1010, 90, 60, 58),
     word("GOODBYE", "GOOD BYE", "word", 800, 1010, 175, 60, 56),
     word("ASK", "?", "action", 1180, 1010, 90, 60, 66),
+    word("CENTER", "", "action", 800, 742, 80, 80, 0),
   ];
   return {
     kind: "wide",
@@ -139,6 +140,7 @@ function tallLayout(): BoardLayout {
     word("UNSAY", "✕", "action", 200, 1118, 82, 56, 54),
     word("GOODBYE", "GOOD BYE", "word", 500, 1118, 155, 56, 50),
     word("ASK", "?", "action", 800, 1118, 82, 56, 62),
+    word("CENTER", "", "action", 500, 846, 74, 74, 0),
   ];
   return {
     kind: "tall",

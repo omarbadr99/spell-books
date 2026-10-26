@@ -1,4 +1,4 @@
-// The room around the board: phase classes, the spirit's color, candles and hints.
+// The room around the board: phase classes, the candles, their color and hints.
 // The look itself lives in atmosphere.css.
 
 import type { PublicSpirit } from "../../shared/presence";
@@ -17,14 +17,16 @@ export type Phase =
   | "ended";
 
 /** Plain candlelight, before any spirit arrives. */
-const CANDLE = "#ffb35c";
+const CANDLE = "#ef8e34";
 
-function toRgb(hex: string): string {
+const toRgb = (hex: string) => {
   const n = parseInt(hex.slice(1), 16);
-  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
-}
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
 
 export class Room {
+  private snuffTimer = 0;
+
   constructor(
     private readonly el: HTMLElement,
     private readonly table: HTMLElement,
@@ -42,15 +44,21 @@ export class Room {
     this.el.classList.toggle("layout-wide", kind === "wide");
   }
 
+  /** The candle color, which lights the room, the glows and the spirit's words. */
   setSpirit(spirit: PublicSpirit | null): void {
-    const color = spirit?.color ?? CANDLE;
-    this.el.style.setProperty("--spirit", color);
-    this.el.style.setProperty("--spirit-rgb", toRgb(color));
+    const rgb = toRgb(spirit?.color ?? CANDLE);
+    const light = rgb.map((c) => Math.round(c + (255 - c) * 0.4));
+    this.el.style.setProperty("--spirit-rgb", rgb.join(", "));
+    this.el.style.setProperty("--spirit-light", `rgb(${light.join(", ")})`);
   }
 
-  /** Candles gutter out (or relight when false). */
-  setGuttering(on: boolean): void {
-    this.el.classList.toggle("guttering", on);
+  /** Lights the four candles one after another, or snuffs them out with a wisp of smoke. */
+  setCandles(lit: boolean): void {
+    if (this.el.classList.contains("candles-lit") === lit) return;
+    this.el.classList.toggle("candles-lit", lit);
+    clearTimeout(this.snuffTimer);
+    this.el.classList.toggle("snuffing", !lit);
+    if (!lit) this.snuffTimer = window.setTimeout(() => this.el.classList.remove("snuffing"), 2600);
   }
 
   shudder(): void {

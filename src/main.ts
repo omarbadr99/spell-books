@@ -18,7 +18,7 @@ import { Ticker } from "./ticker";
 
 const DWELL_MS = 700;
 
-// ?speed=4 runs the spirits (and the dwell) faster; only honoured in development, for the tests.
+// ?speed=4 runs the spirits faster; only honoured in development, for the tests.
 const speed = import.meta.env.DEV ? Math.max(1, Number(new URLSearchParams(location.search).get("speed")) || 1) : 1;
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
@@ -34,7 +34,7 @@ possessor.onTap = () => sound.tap();
 const room = new Room(roomEl, $("#table"), $("#hint"));
 
 let layout: BoardLayout = buildLayout(chooseLayoutKind(innerWidth, innerHeight));
-const dwell = new DwellDetector((x, y) => hitTest(layout, x, y)?.id ?? null, { dwellMs: DWELL_MS / speed, maxSpeed: 260 });
+const dwell = new DwellDetector((x, y) => hitTest(layout, x, y)?.id ?? null, { dwellMs: DWELL_MS, maxSpeed: 260 });
 
 const seance: Seance = new Seance({
   room,
@@ -78,7 +78,7 @@ boardEl.addEventListener("pointerdown", (e) => {
   const p = view.toBoard(e.clientX, e.clientY);
   if (!planchette.canGrab(p)) return;
   e.preventDefault();
-  seance.onGrab();
+  sound.unlock();
   if (!seance.sittersHaveIt || planchette.driven) return;
   planchette.grab(p);
   boardEl.setPointerCapture(e.pointerId);
@@ -100,7 +100,7 @@ ticker.add((now, dt) => {
   planchette.tick(dt);
   sound.scrape(planchette.speed);
   if (planchette.held && !planchette.driven && seance.sittersHaveIt) {
-    const state = dwell.update(now, planchette.pos.x, planchette.pos.y);
+    const state = dwell.update(now, planchette.pos.x, planchette.pos.y, planchette.settled(now));
     view.hover(state.hoverId);
     view.setDwell(state.progress);
     const selected = state.selected && elementById(layout, state.selected);

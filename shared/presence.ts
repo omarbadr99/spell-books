@@ -57,6 +57,14 @@ export interface SpiritSound {
   signature: Signature;
 }
 
+/** The four colors candlelight can burn in. Each spirit lights the candles in one of them. */
+export const CANDLE_COLORS = {
+  orange: "#ef8e34",
+  red: "#ea4d27",
+  purple: "#8719f5",
+  green: "#7fd46c",
+} as const;
+
 export interface PublicSpirit {
   id: string;
   /** Engraved on the brass plate once the spirit spells it. */
@@ -64,7 +72,7 @@ export interface PublicSpirit {
   /** Words in a reply that count as the spirit giving its name. */
   revealWords: string[];
   epitaph: string;
-  /** Candle, glow and fog color. */
+  /** The candles' color while this spirit is here, which tints the room, glows and fog. */
   color: string;
   /** Stroke-only SVG path in a 100×100 box centred on 0,0. */
   sigil: string;
@@ -85,7 +93,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Edwina Vale",
     revealWords: ["EDWINA", "VALE"],
     epitaph: "Spirit medium of Brook Street, departed 1889",
-    color: "#b892ff",
+    color: CANDLE_COLORS.purple,
     sigil: [
       "M 30 -34 A 44 44 0 1 0 30 34 A 34 34 0 1 1 30 -34",
       "M -2 0 Q 18 -16 38 0 Q 18 16 -2 0 Z",
@@ -101,7 +109,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Silas Crane",
     revealWords: ["SILAS", "CRANE"],
     epitaph: "Keeper of Hollow Point Light, drowned 1911",
-    color: "#4fd8c4",
+    color: CANDLE_COLORS.green,
     sigil: [
       "M -14 34 L -9 -14 L 9 -14 L 14 34",
       "M -11 -14 L -11 -26 L 11 -26 L 11 -14",
@@ -120,7 +128,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Pip",
     revealWords: ["PIP"],
     epitaph: "Still hiding, since 1903",
-    color: "#ffd166",
+    color: CANDLE_COLORS.orange,
     sigil: [
       "M 0 38 L -26 4 Q -28 -6 -18 -10 L 18 -10 Q 28 -6 26 4 Z",
       "M -4 -10 L -4 -26 L 4 -26 L 4 -10",
@@ -138,7 +146,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Ada Quill",
     revealWords: ["ADA", "QUILL"],
     epitaph: "Telegraph operator at Dunmore Station, struck 1902",
-    color: "#6cb8ff",
+    color: CANDLE_COLORS.red,
     sigil: [
       "M -46 -14 Q 0 -2 46 -14",
       "M -40 -26 L -40 42 M 40 -26 L 40 42",
@@ -155,7 +163,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Brother Anselm",
     revealWords: ["ANSELM"],
     epitaph: "Bell-ringer of St Hild's, bound to brevity, 1340",
-    color: "#f3e3bf",
+    color: CANDLE_COLORS.red,
     sigil: [
       "M -30 24 Q -28 -6 -20 -14 Q -12 -26 0 -26 Q 12 -26 20 -14 Q 28 -6 30 24 Z",
       "M -38 24 L 38 24",
@@ -173,7 +181,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Lune",
     revealWords: ["LUNE"],
     epitaph: "Older than the house. Older than the town.",
-    color: "#cdd6ff",
+    color: CANDLE_COLORS.purple,
     sigil: [
       circle(0, 0, 44),
       circle(0, 0, 30),
@@ -193,7 +201,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Doctor Morrow",
     revealWords: ["MORROW"],
     epitaph: "Physician to the plague town of Saltmarsh, 1665",
-    color: "#c6dd5c",
+    color: CANDLE_COLORS.green,
     sigil: [
       "M -42 -20 L 22 -20",
       "M -30 -20 L -26 -44 L 6 -44 L 10 -20",
@@ -211,7 +219,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Marguerite Duval",
     revealWords: ["MARGUERITE", "DUVAL"],
     epitaph: "Torch singer of the Blue Lantern Club, last bow 1927",
-    color: "#ff80b5",
+    color: CANDLE_COLORS.orange,
     sigil: [
       "M 0 -6 Q 6 -10 8 -4 Q 10 4 0 6 Q -10 6 -10 -4 Q -10 -16 2 -18 Q 16 -18 18 -4 Q 20 12 2 16 Q -18 18 -20 0",
       "M -20 0 Q -26 -22 -6 -28 Q 10 -34 22 -20 Q 30 -6 24 10 Q 16 26 0 24",
@@ -228,7 +236,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Old Grimsby",
     revealWords: ["GRIMSBY"],
     epitaph: "Landlord of the Crooked Lantern Inn, 1858",
-    color: "#ff8c42",
+    color: CANDLE_COLORS.orange,
     sigil: [
       "M -6 -40 A 6 6 0 1 1 6 -40",
       "M -16 -30 L 16 -30 L 10 -40 L -10 -40 Z",
@@ -246,7 +254,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Hazel Finch",
     revealWords: ["HAZEL", "FINCH"],
     epitaph: "Head librarian of the Wexley Free Library, 1974",
-    color: "#5fd38d",
+    color: CANDLE_COLORS.green,
     sigil: [
       "M 0 -20 Q -20 -30 -44 -24 L -44 26 Q -20 20 0 30 Q 20 20 44 26 L 44 -24 Q 20 -30 0 -20 Z M 0 -20 L 0 30",
       "M -36 -12 Q -20 -16 -8 -10 M -36 2 Q -20 -2 -8 4 M 8 -10 Q 20 -16 36 -12 M 8 4 Q 20 -2 36 2",
@@ -262,7 +270,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Captain Ferro",
     revealWords: ["FERRO"],
     epitaph: "Captain of the Red Widow, lost with all hands, 1717",
-    color: "#ff5a5f",
+    color: CANDLE_COLORS.red,
     sigil: [
       circle(0, 0, 38),
       "M 0 -48 L 8 -8 L 48 0 L 8 8 L 0 48 L -8 8 L -48 0 L -8 -8 Z",
@@ -278,7 +286,7 @@ export const SPIRITS: PublicSpirit[] = [
     name: "Kevin",
     revealWords: ["KEVIN"],
     epitaph: "Arcade legend of the Starlite Mall, game over 1997",
-    color: "#ff4df0",
+    color: CANDLE_COLORS.purple,
     sigil: [
       "M -36 20 L 36 20 L 30 40 L -30 40 Z",
       "M 0 20 L 10 -12",

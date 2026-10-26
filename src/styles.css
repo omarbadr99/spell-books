@@ -1,6 +1,6 @@
 :root {
-  --spirit: #ffb35c;
-  --spirit-rgb: 255, 179, 92;
+  --spirit-rgb: 239, 142, 52;
+  --spirit-light: rgb(245, 187, 133);
   --ink: #26150c;
   --paper: #eadfc4;
   --text: #f1e6d0;
@@ -55,6 +55,7 @@ body {
   margin: 0;
   min-height: 1.35em;
   max-width: min(100%, calc(var(--board-w) + 120px));
+  text-wrap: balance;
   font-family: "Cinzel Decorative", Georgia, serif;
   font-weight: 700;
   font-size: clamp(22px, 4.4vmin, 46px);
@@ -62,7 +63,7 @@ body {
   letter-spacing: 0.14em;
   text-align: center;
   white-space: pre-wrap;
-  color: rgb(var(--spirit-rgb));
+  color: var(--spirit-light);
   text-shadow:
     0 0 10px rgba(var(--spirit-rgb), 0.9),
     0 0 34px rgba(var(--spirit-rgb), 0.55);
@@ -76,6 +77,11 @@ body {
   opacity: 0;
   filter: blur(6px);
   transform: translateY(-10px);
+}
+
+#spirit-line .word {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 #spirit-line .ghost {
@@ -410,14 +416,12 @@ body {
 #disclaimer {
   position: fixed;
   z-index: 4;
-  bottom: max(8px, env(safe-area-inset-bottom));
-  left: 0;
-  right: 0;
+  top: max(14px, env(safe-area-inset-top, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
+  max-width: 150px;
   margin: 0;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
   font-size: 12px;
-  text-align: center;
+  line-height: 1.45;
   letter-spacing: 0.06em;
   color: rgba(241, 230, 208, 0.38);
   pointer-events: none;
@@ -473,7 +477,7 @@ body {
   font-family: "Cinzel Decorative", Georgia, serif;
   font-size: clamp(24px, 6vw, 32px);
   letter-spacing: 0.1em;
-  color: rgb(var(--spirit-rgb));
+  color: var(--spirit-light);
   text-shadow: 0 0 18px rgba(var(--spirit-rgb), 0.6);
 }
 
@@ -537,13 +541,13 @@ body {
   #hint {
     display: none;
   }
+}
 
-  #disclaimer {
-    top: max(10px, env(safe-area-inset-top));
-    bottom: auto;
-    left: max(12px, env(safe-area-inset-left));
-    right: auto;
-    max-width: 150px;
-    text-align: left;
-  }
+/* Tall screens: the candles sit above and below the board's corners. */
+.layout-tall #slip {
+  width: min(70%, 560px, var(--board-w));
+}
+
+.layout-tall #spirit-line {
+  max-width: calc(var(--board-w) - 90px);
 }

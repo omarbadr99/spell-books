@@ -9,7 +9,7 @@ describe.each(kinds)("%s layout", (kind) => {
 
   it("has every glyph exactly once", () => {
     const ids = layout.elements.map((el) => el.id).sort();
-    const expected = [...LETTERS, ...DIGITS, "YES", "NO", "GOODBYE", "ASK", "UNSAY"].sort();
+    const expected = [...LETTERS, ...DIGITS, "YES", "NO", "GOODBYE", "ASK", "UNSAY", "CENTER"].sort();
     expect(ids).toEqual(expected);
   });
 
@@ -39,8 +39,8 @@ describe.each(kinds)("%s layout", (kind) => {
     }
   });
 
-  it("rests the planchette away from every glyph", () => {
-    expect(hitTest(layout, layout.rest.x, layout.rest.y)).toBeNull();
+  it("rests the planchette on the center, where resting sends the question", () => {
+    expect(hitTest(layout, layout.rest.x, layout.rest.y)?.id).toBe("CENTER");
   });
 
   it("finds each glyph at its own centre", () => {

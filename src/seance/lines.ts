@@ -76,6 +76,8 @@ export class InkLine {
 
 export class SpiritLine {
   private fadeTimer = 0;
+  /** Letters of the word being spelled, kept together so a line never breaks mid-word. */
+  private word: HTMLElement | null = null;
 
   constructor(private readonly el: HTMLElement) {}
 
@@ -87,16 +89,23 @@ export class SpiritLine {
     clearTimeout(this.fadeTimer);
     this.el.classList.remove("fading");
     this.el.replaceChildren();
+    this.word = null;
   }
 
   add(text: string): void {
+    if (!this.word) {
+      this.word = document.createElement("span");
+      this.word.className = "word";
+      this.el.append(this.word);
+    }
     const span = document.createElement("span");
     span.className = "ghost";
     span.textContent = text;
-    this.el.append(span);
+    this.word.append(span);
   }
 
   space(): void {
+    this.word = null;
     this.el.append(document.createTextNode(" "));
   }
 

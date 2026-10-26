@@ -8,12 +8,11 @@ export type AskResult =
   | { reply: string; /** Shown as a hint, e.g. when replies come from a fallback. */ note?: string }
   | { error: "slow" | "silent" | "locked" | "unprepared" };
 
-/** Replaces the locked board's hint; the artifact preview uses it to say what the word is. */
-export const LOCK_HINT: string | null = null;
-
 export interface AskBody {
   spiritId: string;
   openerIndex: number;
+  /** What the sitters spelled to light the candles. */
+  greeting?: string;
   history: Turn[];
   question: string;
 }

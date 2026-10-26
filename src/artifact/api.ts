@@ -1,18 +1,13 @@
 // The board's calls when it runs as a claude.ai artifact (npm run build:artifact):
-// there is no Worker, so the lock is kept in this browser and the spirits
+// there is no Worker and no lock (the link is already private), and the spirits
 // answer through the viewer's own Claude, via the artifact's `sample` capability.
 
 import { spiritById } from "../../shared/presence";
 import { REFUSAL_REPLY } from "../../shared/seance";
-import { normalizeBoardWord, sanitizeReply } from "../../shared/text";
+import { sanitizeReply } from "../../shared/text";
 import { mockReply } from "../../worker/mock";
 import { buildSystemPrompt, personaFor } from "../../worker/spirits";
 import type { AskBody, AskResult, EnterResult, SeatState } from "../api";
-
-const BOARD_WORD = "OWL";
-export const LOCK_HINT = `The board answers only to those who know the word. In this preview, the word is ${BOARD_WORD}.`;
-const SEAT_KEY = "spirit-board:seat";
-const SEAT_MS = 30 * 24 * 60 * 60 * 1000;
 
 type Turn = { role: "user" | "assistant"; content: string };
 type Sample = (
@@ -30,20 +25,10 @@ const samplePromise: Promise<Sample | null> = window.claude?.use("sample").catch
 let canned = false;
 
 export async function checkSeat(): Promise<SeatState> {
-  try {
-    return Number(localStorage.getItem(SEAT_KEY)) > Date.now() ? "seated" : "locked";
-  } catch {
-    return "locked";
-  }
+  return "seated";
 }
 
-export async function enter(word: string): Promise<EnterResult> {
-  if (normalizeBoardWord(word) !== BOARD_WORD) return "wrong";
-  try {
-    localStorage.setItem(SEAT_KEY, String(Date.now() + SEAT_MS));
-  } catch {
-    // Not remembered; the board asks again next visit.
-  }
+export async function enter(): Promise<EnterResult> {
   return "ok";
 }
 
@@ -61,8 +46,9 @@ export async function ask(body: AskBody): Promise<AskResult> {
   }
 
   const opener = spirit.openers[body.openerIndex] ?? spirit.openers[0];
+  const greeted = body.greeting ? `The sitters lit the candles and spelled ${body.greeting}. ` : "";
   const rules =
-    `${buildSystemPrompt(persona)}\n\nThe séance has begun. You opened it by spelling: ${opener}\n` +
+    `${buildSystemPrompt(persona)}\n\nThe séance has begun. ${greeted}You answered by spelling: ${opener}\n` +
     "Every message after this one is the sitters' next question as spelled on the board. " +
     "Reply with only the words the planchette should spell.";
   const input: Turn[] = [

@@ -17,6 +17,8 @@ export class Planchette {
   /** Extra tilt a spirit can add, in degrees. */
   tilt = 0;
   private target: Point = { x: 0, y: 0 };
+  /** When the sitters' fingers last moved the planchette's target. */
+  private movedAt = 0;
   private grabOffset: Point = { x: 0, y: 0 };
   private prev: Point = { x: 0, y: 0 };
   private velocity: Point = { x: 0, y: 0 };
@@ -43,7 +45,9 @@ export class Planchette {
 
   dragTo(p: Point): void {
     if (!this.held || this.driven) return;
-    this.target = this.clamp({ x: p.x + this.grabOffset.x, y: p.y + this.grabOffset.y });
+    const next = this.clamp({ x: p.x + this.grabOffset.x, y: p.y + this.grabOffset.y });
+    if (Math.hypot(next.x - this.target.x, next.y - this.target.y) > 3) this.movedAt = performance.now();
+    this.target = next;
   }
 
   release(): void {
@@ -72,6 +76,15 @@ export class Planchette {
     const lean = Math.max(-13, Math.min(13, this.velocity.x * 0.011)) + this.tilt;
     this.angle += (lean - this.angle) * (1 - Math.exp(-dt / 0.14));
     this.view.drawPlanchette(this.pos, this.angle);
+  }
+
+  /**
+   * The sitters' fingers have come to rest and the planchette has caught up with
+   * them. Only then may the glass choose a glyph, however slowly frames arrive.
+   */
+  settled(now: number): boolean {
+    const lag = Math.hypot(this.target.x - this.pos.x, this.target.y - this.pos.y);
+    return lag < 16 && now - this.movedAt > 120;
   }
 
   private clamp(p: Point): Point {

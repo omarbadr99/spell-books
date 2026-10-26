@@ -58,6 +58,17 @@ describe("DwellDetector", () => {
     expect(hold(d, 300, 816, 800)).toEqual(["B"]);
   });
 
+  it("ignores a glyph the planchette is only trailing over", () => {
+    const d = make();
+    const picked: string[] = [];
+    for (let t = 0; t <= 2000; t += 16) {
+      const s = d.update(t, 100, 0, false);
+      if (s.selected) picked.push(s.selected);
+    }
+    expect(picked).toEqual([]);
+    expect(hold(d, 100, 2016, 800)).toEqual(["A"]);
+  });
+
   it("keeps the last letter blocked across a release, but not across a reset", () => {
     const d = make();
     hold(d, 100, 0, 800);

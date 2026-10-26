@@ -244,4 +244,7 @@ ${examples}
 }
 
 /** Stage direction that opens every séance, so the conversation starts with the sitters. */
-export const SEANCE_START = "(The séance begins. The sitters rest their fingers on the planchette.)";
+export function seanceStart(greeting = ""): string {
+  const spelled = greeting ? ` and spell ${greeting}` : "";
+  return `(The séance begins. The candles are lit; the sitters rest their fingers on the planchette${spelled}.)`;
+}

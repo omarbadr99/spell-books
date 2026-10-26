@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:artifact": "tsx scripts/build-artifact.ts",
+    "build:vercel": "tsx scripts/build-vercel.ts",
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.node.json",

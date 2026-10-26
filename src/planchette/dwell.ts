@@ -30,7 +30,12 @@ export class DwellDetector {
     private readonly options: DwellOptions,
   ) {}
 
-  update(t: number, x: number, y: number): DwellState {
+  /**
+   * Call once per frame while the sitters hold the planchette. `steady` is false
+   * while the planchette still trails the sitters' fingers, so a glyph it merely
+   * passes over during a slow frame never counts.
+   */
+  update(t: number, x: number, y: number, steady = true): DwellState {
     if (this.last) {
       const dt = Math.max(1, t - this.last.t);
       const instant = (Math.hypot(x - this.last.x, y - this.last.y) / dt) * 1000;
@@ -44,7 +49,7 @@ export class DwellDetector {
       this.candidate = id;
       this.since = t;
     }
-    if (this.speed > this.options.maxSpeed) this.since = t;
+    if (!steady || this.speed > this.options.maxSpeed) this.since = t;
     if (!id || id === this.blocked) return { hoverId: id, progress: 0, selected: null };
 
     const progress = Math.min(1, (t - this.since) / this.options.dwellMs);
