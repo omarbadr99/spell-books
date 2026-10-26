@@ -1,0 +1,118 @@
+// A whole séance in the browser with canned spirits: the lock, summoning,
+// asking, unsaying and goodbye. Runs the spirits 5× faster than life.
+
+import { expect, test, type Page } from "@playwright/test";
+
+declare global {
+  interface Window {
+    __board: {
+      phase(): string;
+      spirit(): string | null;
+      lens(): { x: number; y: number };
+      glyph(id: string): { x: number; y: number } | null;
+      lastTarget(): string | null;
+      spiritLine(): string;
+      ink(): string;
+    };
+  }
+}
+
+const SPEED = 5;
+/** Time for the planchette to catch up and the glass to dwell (700 ms / SPEED). */
+const SETTLE_MS = 300 + 700 / SPEED + 220;
+/** Fingers rest a little below the glass, on the planchette's body. */
+const GRIP = 18;
+
+const ink = (page: Page) => page.evaluate(() => window.__board.ink());
+const lastTarget = (page: Page) => page.evaluate(() => window.__board.lastTarget());
+const spiritLine = (page: Page) => page.evaluate(() => window.__board.spiritLine());
+const lens = (page: Page) => page.evaluate(() => window.__board.lens());
+const glyph = (page: Page, id: string) => page.evaluate((glyphId) => window.__board.glyph(glyphId), id);
+
+async function phaseBecomes(page: Page, ...phases: string[]) {
+  await page.waitForFunction((ps) => ps.includes(window.__board.phase()), phases, { timeout: 90_000 });
+}
+
+/** Drags the planchette so its glass rests on each glyph in turn. */
+async function spell(page: Page, ...ids: string[]) {
+  const start = await lens(page);
+  await page.mouse.move(start.x, start.y + GRIP);
+  await page.mouse.down();
+  for (const id of ids) {
+    const target = await glyph(page, id);
+    expect(target, id).not.toBeNull();
+    await page.mouse.move(target!.x, target!.y + GRIP, { steps: 10 });
+    await page.waitForTimeout(SETTLE_MS);
+  }
+  await page.mouse.up();
+}
+
+async function touchPlanchette(page: Page) {
+  const at = await lens(page);
+  await page.mouse.move(at.x, at.y + GRIP);
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
+test("a séance from the lock to goodbye", async ({ page }, testInfo) => {
+  await page.goto(`/?speed=${SPEED}`);
+  await phaseBecomes(page, "locked");
+
+  // A wrong word: the planchette jerks to NO and the board stays locked.
+  await spell(page, "A", "B");
+  expect(await ink(page)).toBe("AB");
+  await spell(page, "ASK");
+  await phaseBecomes(page, "unlocking");
+  await phaseBecomes(page, "locked");
+  expect(await lastTarget(page)).toBe("NO");
+
+  // The right word wakes the board.
+  await spell(page, "O", "W", "L", "ASK");
+  await phaseBecomes(page, "dormant");
+
+  // Touching the planchette summons a spirit, which spells its opener.
+  await touchPlanchette(page);
+  await phaseBecomes(page, "summoning");
+  expect(await page.evaluate(() => window.__board.spirit())).toBeTruthy();
+  await phaseBecomes(page, "listening");
+  expect((await spiritLine(page)).trim()).not.toBe("");
+  await page.screenshot({ path: testInfo.outputPath("listening.png") });
+
+  // A yes/no question lands on YES.
+  await spell(page, "I", "S", "ASK");
+  await phaseBecomes(page, "answering");
+  await phaseBecomes(page, "listening");
+  expect(await lastTarget(page)).toBe("YES");
+  expect(await spiritLine(page)).toBe("YES");
+
+  // Asking who it is engraves the name.
+  await spell(page, "W", "H", "O", "ASK");
+  await phaseBecomes(page, "answering");
+  await phaseBecomes(page, "listening");
+  await expect(page.locator(".nameplate.engraved")).toHaveCount(1);
+
+  // UNSAY takes a letter back.
+  await spell(page, "X");
+  expect(await ink(page)).toBe("X");
+  await spell(page, "UNSAY");
+  expect(await ink(page)).toBe("");
+
+  // Saying goodbye: the spirit spells its farewell, rests on GOOD BYE, and the card shows.
+  await spell(page, "GOODBYE");
+  await phaseBecomes(page, "ended");
+  expect(await lastTarget(page)).toBe("GOODBYE");
+  await expect(page.locator("#endcard")).toBeVisible();
+  await expect(page.locator(".endcard-stats")).toContainText("2 questions asked");
+  await page.screenshot({ path: testInfo.outputPath("endcard.png") });
+
+  // Tapping the card clears the table for another séance.
+  await page.locator("#endcard").click();
+  await phaseBecomes(page, "dormant");
+});
+
+test("a device that already knows the word skips the lock", async ({ page, context }) => {
+  const res = await context.request.post("/api/enter", { data: { word: "owl" } });
+  expect(res.ok()).toBe(true);
+  await page.goto(`/?speed=${SPEED}`);
+  await phaseBecomes(page, "dormant");
+});

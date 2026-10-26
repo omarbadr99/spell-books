@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#060408" />
+    <meta name="description" content="A candlelit talking board. Spell a question with the planchette and a spirit answers." />
+    <title>Spirit Board</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <main id="room" class="phase-booting">
+      <div class="glow" aria-hidden="true"></div>
+      <div class="fog fog-a" aria-hidden="true"></div>
+      <div class="fog fog-b" aria-hidden="true"></div>
+
+      <div id="stage">
+        <p id="spirit-line" aria-live="polite"></p>
+        <div id="table">
+          <div class="candle candle-left" aria-hidden="true">
+            <div class="halo"></div>
+            <div class="flame-wrap"><div class="flame"></div></div>
+            <div class="wick"></div>
+            <div class="wax"></div>
+          </div>
+          <svg id="board" role="img" aria-label="A wooden talking board with a planchette"></svg>
+          <div class="board-shade" aria-hidden="true"></div>
+          <div class="candle candle-right" aria-hidden="true">
+            <div class="halo"></div>
+            <div class="flame-wrap"><div class="flame"></div></div>
+            <div class="wick"></div>
+            <div class="wax"></div>
+          </div>
+        </div>
+        <div id="slip"><p id="ink-line" aria-live="polite"></p></div>
+        <p id="hint"></p>
+      </div>
+
+      <div class="vignette" aria-hidden="true"></div>
+
+      <button id="mute" type="button" aria-label="Mute sound" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path class="speaker" d="M4 9h4l5-4v14l-5-4H4z" />
+          <path class="waves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" />
+          <path class="cross" d="M16 9l5 6M21 9l-5 6" />
+        </svg>
+      </button>
+
+      <p id="disclaimer">For entertainment. The spirits are an AI.</p>
+
+      <section id="endcard" hidden aria-label="The séance has ended">
+        <div class="card">
+          <svg class="endcard-sigil" viewBox="-60 -60 120 120" aria-hidden="true"><path /></svg>
+          <h2 class="endcard-name"></h2>
+          <p class="endcard-epitaph"></p>
+          <p class="endcard-stats"></p>
+          <p class="endcard-again">Touch to summon another</p>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

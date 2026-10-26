@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spirit-board",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": { "enabled": true },
+  // Secrets (set with `wrangler secret put`, or in .dev.vars locally):
+  //   ANTHROPIC_API_KEY, BOARD_WORD, COOKIE_SECRET
+  "vars": {
+    "SPIRIT_MODEL": "claude-haiku-5-5",
+    "MOCK_SPIRIT": "0"
+  },
+  "ratelimits": [
+    { "name": "ASK_LIMITER", "namespace_id": "4201", "simple": { "limit": 15, "period": 60 } },
+    { "name": "ENTER_LIMITER", "namespace_id": "4202", "simple": { "limit": 5, "period": 60 } }
+  ],
+  "env": {
+    // Used by the Playwright tests: canned spirits, no API key, relaxed limits.
+    "e2e": {
+      "vars": {
+        "SPIRIT_MODEL": "claude-haiku-5-5",
+        "MOCK_SPIRIT": "1"
+      },
+      "ratelimits": [
+        { "name": "ASK_LIMITER", "namespace_id": "4203", "simple": { "limit": 100, "period": 60 } },
+        { "name": "ENTER_LIMITER", "namespace_id": "4204", "simple": { "limit": 100, "period": 60 } }
+      ]
+    }
+  }
+}

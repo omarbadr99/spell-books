@@ -1,0 +1,4 @@
+# Test-only values for the Playwright suite (CLOUDFLARE_ENV=e2e). Not real secrets.
+BOARD_WORD=OWL
+COOKIE_SECRET=e2e-cookie-secret-not-for-production
+ANTHROPIC_API_KEY=
