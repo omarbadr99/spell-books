@@ -56,7 +56,7 @@ export class Seance {
     this.parts.room.setSpirit(null);
     const seat = await api.checkSeat();
     if (seat === "seated") this.toDormant();
-    else this.toLocked(seat === "unprepared" ? HINTS.unprepared : HINTS.locked);
+    else this.toLocked(seat === "unprepared" ? HINTS.unprepared : (api.LOCK_HINT ?? HINTS.locked));
   }
 
   /** The sitters may move the planchette themselves. */
@@ -165,7 +165,7 @@ export class Seance {
     await possessor.lunge("NO", (id) => view.flash(id, 1500));
     await this.parts.sleep(700);
     await possessor.home();
-    this.toLocked(result === "unprepared" ? HINTS.unprepared : HINTS.locked);
+    this.toLocked(result === "unprepared" ? HINTS.unprepared : (api.LOCK_HINT ?? HINTS.locked));
   }
 
   private async summon(): Promise<void> {
@@ -254,6 +254,7 @@ export class Seance {
     this.setPhase("answering");
 
     if ("reply" in result) {
+      if (result.note) room.hint(result.note);
       this.questions++;
       this.history.push({ from: "sitters", text: question }, { from: "spirit", text: result.reply });
       await this.spell(result.reply);
@@ -331,6 +332,6 @@ export class Seance {
     spiritLine.begin();
     this.spirit = null;
     room.setSpirit(null);
-    this.toLocked(HINTS.locked);
+    this.toLocked(api.LOCK_HINT ?? HINTS.locked);
   }
 }

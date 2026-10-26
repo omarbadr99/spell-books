@@ -4,7 +4,12 @@ import type { Turn } from "../shared/seance";
 
 export type SeatState = "seated" | "locked" | "unprepared";
 export type EnterResult = "ok" | "wrong" | "slow" | "unprepared";
-export type AskResult = { reply: string } | { error: "slow" | "silent" | "locked" | "unprepared" };
+export type AskResult =
+  | { reply: string; /** Shown as a hint, e.g. when replies come from a fallback. */ note?: string }
+  | { error: "slow" | "silent" | "locked" | "unprepared" };
+
+/** Replaces the locked board's hint; the artifact preview uses it to say what the word is. */
+export const LOCK_HINT: string | null = null;
 
 export interface AskBody {
   spiritId: string;

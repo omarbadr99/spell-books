@@ -2,14 +2,11 @@
 // reply into something the planchette can spell.
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { Turn } from "../shared/seance";
+import { REFUSAL_REPLY, type Turn } from "../shared/seance";
 import { sanitizeReply } from "../shared/text";
 import { buildSystemPrompt, SEANCE_START, type SpiritPersona } from "./spirits";
 
 export type SpiritAnswer = { kind: "reply"; reply: string } | { kind: "silent" } | { kind: "busy" };
-
-/** Spelled when Claude declines to answer. */
-export const REFUSAL_REPLY = "I CANNOT SAY";
 
 export function buildMessages(opener: string, history: Turn[], question: string): Anthropic.MessageParam[] {
   return [

@@ -1,10 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { SPIRITS } from "../../shared/presence";
-import { MAX_HISTORY } from "../../shared/seance";
+import { MAX_HISTORY, REFUSAL_REPLY } from "../../shared/seance";
 import { handleApi, type ApiDeps } from "../../worker/api";
 import { issueSeat, readSeat, SEAT_MAX_AGE, wordMatches } from "../../worker/auth";
-import { REFUSAL_REPLY } from "../../worker/spirit";
 import { SEANCE_START } from "../../worker/spirits";
 
 const limiter = (success = true) => ({ limit: vi.fn(async () => ({ success })) });
