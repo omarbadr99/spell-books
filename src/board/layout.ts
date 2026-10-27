@@ -33,10 +33,8 @@ export interface BoardLayout {
   elements: BoardElement[];
   /** Where the planchette sleeps: the CENTER glyph, where resting sends what was spelled. */
   rest: Point;
-  /** The dotted moon at the head of the board. */
-  moon: Point & { r: number };
-  /** Where a spirit's name appears once it gives it. */
-  nameplate: Point & { w: number; h: number };
+  /** The candle: the middle of its base, and its height. It may stand just off the board, in the margin. */
+  candle: Point & { h: number };
   planchetteScale: number;
 }
 
@@ -108,7 +106,7 @@ function wideLayout(): BoardLayout {
     ...arc({ letters: "ABCDEFGHIJKLM", ...arcThrough({ x: 800, y: 420 }, 610, 200), size: 78 }),
     ...arc({ letters: "NOPQRSTUVWXYZ", ...arcThrough({ x: 800, y: 590 }, 560, 190), size: 78 }),
     ...digitRow(900, 350, 1250, 56),
-    word("GOODBYE", "GOOD BYE", "word", 800, 1010, 175, 60, 56),
+    word("GOODBYE", "GOODBYE", "word", 800, 1010, 175, 60, 56),
     word("CENTER", "", "action", 800, 742, 80, 80, 0),
   ];
   return {
@@ -117,15 +115,14 @@ function wideLayout(): BoardLayout {
     height,
     elements,
     rest: { x: 800, y: 742 },
-    moon: { x: 800, y: 188, r: 74 },
-    nameplate: { x: 800, y: 318, w: 380, h: 48 },
+    candle: { x: -95, y: 1010, h: 290 },
     planchetteScale: 1,
   };
 }
 
 function tallLayout(): BoardLayout {
   const width = 1000;
-  const height = 1200;
+  const height = 1320;
   const elements = [
     word("YES", "YES", "word", 222, 128, 112, 62, 60),
     word("NO", "NO", "word", 790, 128, 100, 62, 60),
@@ -133,7 +130,7 @@ function tallLayout(): BoardLayout {
     ...arc({ letters: "JKLMNOPQR", ...arcThrough({ x: 500, y: 520 }, 370, 130), size: 74 }),
     ...arc({ letters: "STUVWXYZ", ...arcThrough({ x: 500, y: 655 }, 330, 110), size: 74 }),
     ...digitRow(990, 95, 905, 50),
-    word("GOODBYE", "GOOD BYE", "word", 500, 1118, 155, 56, 50),
+    word("GOODBYE", "GOODBYE", "word", 500, 1118, 155, 56, 50),
     word("CENTER", "", "action", 500, 846, 74, 74, 0),
   ];
   return {
@@ -142,8 +139,7 @@ function tallLayout(): BoardLayout {
     height,
     elements,
     rest: { x: 500, y: 846 },
-    moon: { x: 500, y: 132, r: 64 },
-    nameplate: { x: 500, y: 236, w: 300, h: 44 },
+    candle: { x: 112, y: 1305, h: 190 },
     planchetteScale: 0.9,
   };
 }

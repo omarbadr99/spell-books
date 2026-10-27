@@ -1,16 +1,17 @@
 # Spirit Board
 
-A talking board where AI spirits answer. It starts in black and silver under a
-dotted moon. Spell HI and the candles light, the board takes on their color, and
-a spirit arrives. You spell a question by dragging the planchette from letter to
-letter, then bring it back to the center of the board. Your ink soaks into the
-paper, the planchette pulls away from your fingers, and the spirit spells its
-reply on its own, usually in a single word. The idea comes from Maxime Rivest's
-Tom Riddle diary for the reMarkable.
+A talking board made of light, where AI spirits answer. The planchette appears
+alone in the dark, then the board gathers around it: letters, numbers and a
+candle, all made of drifting particles. Say hello and the candle lights, a
+breeze comes through and a spirit arrives. You spell a question by dragging the
+planchette from letter to letter, then bring it back to the center of the board.
+Your message dissolves, the planchette pulls away from your fingers, and the
+spirit spells its reply on its own, usually in a single word. The idea comes
+from Maxime Rivest's Tom Riddle diary for the reMarkable.
 
 <p align="center">
-  <img src="docs/board-desktop.jpg" alt="The board on a laptop in purple candlelight: the spirit has just spelled KEVIN, and its name is written under the moon" width="640">
-  <img src="docs/board-phone.jpg" alt="The board on a phone in black and white before the candles are lit, with HI spelled on the paper slip" width="200">
+  <img src="docs/board-desktop.jpg" alt="The board on a laptop: letters made of particles, lit gold by the candle on the left and silver further away, with ISANYONETHERE spelled and the planchette resting on E" width="640">
+  <img src="docs/board-phone.jpg" alt="The board on a phone before the candle is lit, with HI spelled as the message" width="200">
 </p>
 
 There is no typing anywhere. Even the word that unlocks the board is spelled
@@ -18,31 +19,33 @@ with the planchette.
 
 ## How to play
 
-- **Spell with the planchette.** Drag it and pause with its glass on a letter.
-  A brief pause is enough: the letter is written on the paper slip. Letters run
-  together the way they do on a real board (`WHATISYOURNAME`), and the spirit
-  reads them fine. To spell a double letter, nudge off the letter and back on.
-  Tap the paper slip to rub out the last letter.
-- **Send it from the center.** Bring the planchette back to the ring of dots in
-  the middle of the board. It sends whatever is on the slip the moment it stops
-  there, or as soon as you let go of it there.
+- **Spell with the planchette.** Drag it and pause with its window on a
+  letter. A brief pause is enough: the letter is added to your message at the
+  top. Letters run together the way they do on a real board
+  (`WHATISYOURNAME`), and the spirit reads them fine. To spell a double letter,
+  nudge off the letter and back on. Tap your message to rub out its last
+  letter.
+- **Send it from the center.** Bring the planchette back to the ring of light
+  in the middle of the board. It sends your message the moment it stops there,
+  or as soon as you let go of it there.
 - **Unlock the board.** A new device starts locked. Spell the secret word and
   bring the planchette back to the center. A wrong word sends it to **NO**.
   Each device stays unlocked for 30 days.
-- **Say HI to start.** The board is black and silver, lit only by the moon, and
-  the four candles are out. Spell `HI` and return to the center: the candles
-  light one by one and one of 12 spirits arrives and answers. Its candles burn
-  in one of four colors (orange, red, purple or green), which light up the
-  room and the board. Each spirit also has its own sound and way of moving the
-  planchette.
+- **Say hello to start.** The candle is out and the board is white light on
+  black. Spell a greeting (`HI`, `HELLO`, `ISANYONETHERE`, or anything at all)
+  and return to the center: the candle lights, a breeze stirs the particles,
+  and one of 12 spirits arrives and answers. Its flame burns in one of four
+  colors (orange, red, purple or green). The light falls on the letters nearest
+  the candle and fades across the board, and it flickers. Each spirit also has
+  its own sound and way of moving the planchette.
 - **Ask anything.** Spirits answer in a word when they can, and in two or three
-  only when one won't do. On an empty slip, **YES** or **NO** answers the
-  spirit's own question straight away. Ask `WHOAREYOU` and its name appears
-  under the moon.
-- **End the séance.** Rest the glass on **GOOD BYE**. Spirits also leave on
-  their own if you're rude. The candles go out and an end card shows who you
-  met, ready to be the last shot of a video. Touch the card, then spell `HI`
-  again to call someone new.
+  only when one won't do. With nothing spelled, **YES** or **NO** answers the
+  spirit's own question straight away. Ask `WHOAREYOU` and its words appear
+  under its name from then on.
+- **End the séance.** Rest the window on **GOODBYE**. Spirits also leave on
+  their own if you're rude. The candle goes out in a curl of smoke and an end
+  card shows who you met, ready to be the last shot of a video. Touch the card,
+  then say hello again to call someone new.
 
 ## Run it on your computer
 
@@ -170,15 +173,23 @@ is complete and that its lines fit on the board.
 
 ## How it's built
 
-- **Front end** (`src/`) is plain TypeScript and SVG built with Vite. It has
-  no framework.
+- **Front end** (`src/`) is plain TypeScript built with Vite, with
+  [Three.js](https://threejs.org) for the particles. It has no framework.
   - The board layouts are data (`src/board/layout.ts`): two arcs of letters
     on wide screens, three arcs on phones held upright.
-  - The board's surface is stippled procedurally in dots
-    (`src/board/stipple.ts`): star dust, a moon and banks of cloud.
-  - The candlelight is CSS laid over the board, which tints its silver.
-  - The planchette has its own SVG layer over the board, so the board stays
-    still while it moves. Its glass magnifies the letters underneath it.
+  - Every glyph and the candle are drawn into a mask and sampled into points
+    (`src/scene/masks.ts`, `src/scene/sampling.ts`). The points crowd the
+    edges and run in short threads through the strokes, which keeps the
+    letters legible. Each point also has a start position out in the dark, so
+    the board can form, and later morph into other shapes.
+  - The shaders (`src/scene/shaders.ts`) light every point by the candle with
+    an inverse-square fall-off, sway it in the breeze, and make it twinkle.
+    The flame, the glow and the planchette are soft gradients, not particles.
+  - Behind it all, stars drift and the sky turns very slowly
+    (`src/scene/sky.ts`).
+  - The page's own layout decides where the board sits; the camera lines the
+    particles up with it (`src/scene/stage.ts`), and the planchette is drawn
+    over them as plain HTML.
   - A spirit moves the planchette the way fingers do
     (`src/planchette/possess.ts`): a pause before it sets off, a smooth glide
     that bows a little, a slide past the letter and a pull back.

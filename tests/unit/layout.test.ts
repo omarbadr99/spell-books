@@ -49,13 +49,13 @@ describe.each(kinds)("%s layout", (kind) => {
     }
   });
 
-  it("keeps the moon and nameplate clear of the glyphs", () => {
-    const { moon, nameplate } = layout;
-    for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]) {
-      expect(hitTest(layout, moon.x + dx * moon.r, moon.y + dy * moon.r)).toBeNull();
+  it("keeps the candle clear of the glyphs", () => {
+    const { candle } = layout;
+    for (let y = candle.y - candle.h * 1.2; y <= candle.y; y += 6) {
+      for (const dx of [-0.25, 0, 0.25]) {
+        expect(hitTest(layout, candle.x + dx * candle.h, y), `${candle.x + dx * candle.h},${y}`).toBeNull();
+      }
     }
-    expect(hitTest(layout, nameplate.x - nameplate.w / 2, nameplate.y)).toBeNull();
-    expect(hitTest(layout, nameplate.x + nameplate.w / 2, nameplate.y)).toBeNull();
   });
 });
 
@@ -75,6 +75,6 @@ describe("layout helpers", () => {
   });
 
   it("looks elements up by id", () => {
-    expect(elementById(buildLayout("wide"), "GOODBYE")?.label).toBe("GOOD BYE");
+    expect(elementById(buildLayout("wide"), "GOODBYE")?.label).toBe("GOODBYE");
   });
 });

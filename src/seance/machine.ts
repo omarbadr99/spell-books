@@ -16,15 +16,15 @@ import type { DwellDetector } from "../planchette/dwell";
 import type { Planchette } from "../planchette/planchette";
 import { STILL_AIR, type Possessor } from "../planchette/possess";
 import { markMet, type EndCard } from "./endcard";
-import type { InkLine, SpiritLine } from "./lines";
+import type { InkLine, SpiritLine, Voice } from "./lines";
 
 const HINTS = {
   locked: "Spell the secret word, then bring the planchette back to the center.",
   unprepared: "The board has not been prepared yet. See the README.",
-  dormant: "Spell HI, then bring the planchette back to the center.",
+  dormant: "Say hello: spell HI, or IS ANYONE THERE, then bring the planchette back to the center.",
   listening: "Spell your question, then bring the planchette back to the center.",
-  send: "Back to the center to send it. Tap the paper to rub out a letter.",
-  unlocked: "The board knows you now. Spell HI to light the candles.",
+  send: "Back to the center to send it. Tap your message to rub out a letter.",
+  unlocked: "The board knows you now. Say hello to light the candle.",
 };
 
 export interface SeanceParts {
@@ -35,6 +35,7 @@ export interface SeanceParts {
   dwell: DwellDetector;
   ink: InkLine;
   spiritLine: SpiritLine;
+  voice: Voice;
   endCard: EndCard;
   sound: SoundScape;
   /** Waits in step with the spirits (faster in tests). */
@@ -117,7 +118,8 @@ export class Seance {
   }
 
   private showSpelling(): void {
-    const { ink, view, room } = this.parts;
+    const { ink, view, room, voice } = this.parts;
+    voice.sitters();
     view.beckon(!ink.empty);
     room.hint(ink.empty ? this.restingHint() : this.phase === "listening" && this.taught ? "" : HINTS.send);
   }
@@ -125,16 +127,16 @@ export class Seance {
   /** Re-applies what's drawn on the board after it is re-rendered for a new layout. */
   restoreBoard(): void {
     const { view, ink } = this.parts;
-    view.engraveName(this.spirit && this.named ? this.spirit.name : null);
     view.beckon(this.sittersHaveIt && !ink.empty);
   }
 
   dismissEndCard(): void {
     if (this.phase !== "ended") return;
-    const { endCard, view, spiritLine } = this.parts;
+    const { endCard, voice, spiritLine } = this.parts;
     endCard.hide();
     this.spirit = null;
-    view.engraveName(null);
+    voice.setName(null);
+    voice.sitters();
     spiritLine.begin();
     this.toDormant(HINTS.dormant);
   }
@@ -205,7 +207,7 @@ export class Seance {
 
   /** The sitters' first words light the candles and call a spirit, which answers with its opener. */
   private async summon(): Promise<void> {
-    const { room, view, possessor, sound, ink, spiritLine, dwell } = this.parts;
+    const { room, voice, possessor, sound, ink, spiritLine, dwell } = this.parts;
     this.setPhase("summoning");
     this.takeOver();
     this.greeting = ink.soak();
@@ -217,7 +219,7 @@ export class Seance {
     this.questions = 0;
     markMet(spirit.id);
     spiritLine.begin();
-    view.engraveName(null);
+    voice.setName(null);
     dwell.reset();
     room.hint("");
 
@@ -267,7 +269,7 @@ export class Seance {
       await this.spell(result.reply);
       if (!this.named && revealsName(result.reply, spirit.revealWords, spirit.name)) {
         this.named = true;
-        this.parts.view.engraveName(spirit.name);
+        this.parts.voice.setName(spirit.name);
       }
       if (saysGoodbye(result.reply)) return this.end();
       return this.listen();
@@ -287,8 +289,9 @@ export class Seance {
 
   /** The planchette spells a reply glyph by glyph, then drifts home (or stays on GOOD BYE). */
   private async spell(text: string): Promise<void> {
-    const { possessor, spiritLine, view, sound } = this.parts;
+    const { possessor, spiritLine, view, sound, voice } = this.parts;
     spiritLine.begin();
+    voice.spirit();
     for (const move of replyToMoves(text)) {
       if (move.type === "space") {
         spiritLine.space();
@@ -301,7 +304,9 @@ export class Seance {
         sound.chime(chimeIndex(id));
       });
     }
-    spiritLine.fadeLater();
+    spiritLine.fadeLater(3400, () => {
+      if (this.sittersHaveIt) voice.sitters();
+    });
     if (!saysGoodbye(text)) await possessor.home();
   }
 
@@ -332,9 +337,10 @@ export class Seance {
 
   /** The device's seat expired mid-séance: the spirit slips away and the board locks. */
   private loseTheTable(): void {
-    const { room, view, sound, spiritLine } = this.parts;
+    const { room, voice, sound, spiritLine } = this.parts;
     sound.release();
-    view.engraveName(null);
+    voice.setName(null);
+    voice.sitters();
     spiritLine.begin();
     this.spirit = null;
     room.setSpirit(null);

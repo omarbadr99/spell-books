@@ -1,337 +1,332 @@
-// Draws the board and the planchette as SVG, and owns every visual state that
-// lives on the board itself (glows, the spirit's name, the dwell ring). The look
-// is black card and silver: stippled night sky, silver lettering with a grain of
-// glitter, a filigree frame and a black glass planchette.
-//
-// The planchette has an SVG of its own laid over the board's, so the board can
-// stay still (and cached, candlelight and all) while the planchette moves.
+// The board as the sitters see it: a Three.js scene of particles (the letters,
+// numbers, words and candle, the sky and the breeze), with the planchette and
+// the center ring laid over it as soft gradients. It owns everything about the
+// picture: which glyph glows, the candle's light, how far the board has formed.
 
-import type { BoardElement, BoardLayout, Point } from "./layout";
-import { paintBoard } from "./stipple";
+import { buildBoard, candleGeometry, MAX_GLYPHS, type BoardParticles } from "../scene/board";
+import { Flame } from "../scene/flame";
+import { CandleLight } from "../scene/light";
+import { Motes } from "../scene/motes";
+import { Sky } from "../scene/sky";
+import { Stage } from "../scene/stage";
+import { shared } from "../scene/uniforms";
+import type { BoardLayout, Point } from "./layout";
 
-const NS = "http://www.w3.org/2000/svg";
-const LENS_R = 40;
-const LENS_ZOOM = 1.6;
-const FONT = "Kalnia, 'Playfair Display', Georgia, serif";
-/** A shield of black glass, its window near the top and its point toward the sitters. */
-const PLANCHETTE =
-  "M 0 -70 C 52 -70 100 -62 107 -16 C 113 30 80 100 6 172 Q 0 178 -6 172 " +
-  "C -80 100 -113 30 -107 -16 C -100 -62 -52 -70 0 -70 Z";
+/** The planchette's window, in board units. */
+const HOLE = 34;
+/** A porcelain planchette, its point at the top and two lobes at the bottom; the window is at 0,0. */
+const SHAPE =
+  "M 0 -150 C 30 -110 98 -40 100 18 C 102 62 70 92 40 92 C 18 92 6 82 0 72 " +
+  "C -6 82 -18 92 -40 92 C -70 92 -102 62 -100 18 C -98 -40 -30 -110 0 -150 Z";
+const BOX = 'viewBox="-140 -175 280 300" width="280" height="300"';
 
-type Attrs = Record<string, string | number>;
-
-function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Attrs = {}, parent?: Element): SVGElementTagNameMap[K] {
-  const node = document.createElementNS(NS, tag);
-  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
-  parent?.appendChild(node);
-  return node;
-}
-
-const diamond = (x: number, y: number, w: number, h = w * 1.3) =>
-  `M ${x} ${y - h} L ${x + w} ${y} L ${x} ${y + h} L ${x - w} ${y} Z`;
-
-/** A frame line `inset` from the edge whose corners curve inward around a notch of radius r. */
-function notchedRect(width: number, height: number, inset: number, corner: number, r: number): string {
-  const a = Math.sqrt(r * r - (inset - corner) ** 2);
-  const arc = (x: number, y: number) => `A ${r} ${r} 0 0 0 ${x.toFixed(1)} ${y.toFixed(1)}`;
-  return [
-    `M ${corner + a} ${inset} H ${width - corner - a}`,
-    arc(width - inset, corner + a),
-    `V ${height - corner - a}`,
-    arc(width - corner - a, height - inset),
-    `H ${corner + a}`,
-    arc(inset, height - corner - a),
-    `V ${corner + a}`,
-    arc(corner + a, inset),
-    "Z",
-  ].join(" ");
-}
-
-/** Filigree for the top left corner; the other corners are mirror images. */
-const CORNER = [
-  "M 82 62 C 100 50 128 47 150 52 C 166 56 172 68 164 74 C 157 79 149 72 154 66",
-  "M 62 82 C 50 100 47 128 52 150 C 56 166 68 172 74 164 C 79 157 72 149 66 154",
-].join(" ");
-const CORNER_DOTS = "M 89.4 44.2 A 66 66 0 0 1 44.2 89.4";
-/** Filigree for the middle of the left side, centred on y = 0. */
-const SIDE = [
-  "M 58 -12 C 66 -28 66 -52 54 -64 C 47 -71 40 -64 44 -57",
-  "M 58 12 C 66 28 66 52 54 64 C 47 71 40 64 44 57",
-].join(" ");
-
-/** Specks of light and shadow that give the silver its grain. Seeded, so it never changes. */
-function glitter(pattern: SVGPatternElement, size: number): void {
-  let seed = 7;
-  const rand = () => {
-    seed = (seed * 16807) % 2147483647;
-    return seed / 2147483647;
-  };
-  for (let i = 0; i < 34; i++) {
-    svg("circle", { cx: (rand() * size).toFixed(1), cy: (rand() * size).toFixed(1), r: (0.5 + rand() * 0.7).toFixed(2), fill: "#16161b", "fill-opacity": (0.18 + rand() * 0.24).toFixed(2) }, pattern);
-  }
-  for (let i = 0; i < 44; i++) {
-    svg("circle", { cx: (rand() * size).toFixed(1), cy: (rand() * size).toFixed(1), r: (0.4 + rand() * 0.7).toFixed(2), fill: "#fff", "fill-opacity": (0.5 + rand() * 0.5).toFixed(2) }, pattern);
-  }
-}
+const planchetteMarkup = `
+  <svg class="porcelain" ${BOX} aria-hidden="true">
+    <defs>
+      <radialGradient id="pl-porcelain" cx="0.38" cy="0.32" r="0.8">
+        <stop offset="0" stop-color="#ffffff"/><stop offset="0.42" stop-color="#f1efeb"/>
+        <stop offset="0.8" stop-color="#cdcac4"/><stop offset="1" stop-color="#a9a6a0"/>
+      </radialGradient>
+      <radialGradient id="pl-rim">
+        <stop offset="0.78" stop-color="#55524d"/><stop offset="0.9" stop-color="#9c9993"/><stop offset="1" stop-color="#f4f2ee"/>
+      </radialGradient>
+      <mask id="pl-cut"><rect x="-140" y="-175" width="280" height="300" fill="#fff"/><circle r="${HOLE}" fill="#000"/></mask>
+      <filter id="pl-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7"/></filter>
+      <clipPath id="pl-inside"><path d="${SHAPE}"/></clipPath>
+    </defs>
+    <g mask="url(#pl-cut)">
+      <path d="${SHAPE}" fill="url(#pl-porcelain)"/>
+      <g clip-path="url(#pl-inside)">
+        <path d="${SHAPE}" fill="none" stroke="#6f6c66" stroke-opacity="0.45" stroke-width="16" filter="url(#pl-soft)"/>
+        <ellipse cx="-34" cy="-52" rx="24" ry="44" fill="#fff" opacity="0.7" filter="url(#pl-soft)"/>
+      </g>
+      <circle r="${HOLE + 4}" fill="url(#pl-rim)"/>
+    </g>
+  </svg>
+  <svg class="warm" ${BOX} aria-hidden="true">
+    <defs>
+      <linearGradient id="pl-warm" gradientUnits="userSpaceOnUse" x1="-120" y1="0" x2="120" y2="0">
+        <stop class="pl-warm-stop" offset="0" stop-opacity="0.85"/><stop class="pl-warm-stop" offset="1" stop-opacity="0"/>
+      </linearGradient>
+      <mask id="pl-cut-warm"><rect x="-140" y="-175" width="280" height="300" fill="#fff"/><circle r="${HOLE}" fill="#000"/></mask>
+    </defs>
+    <path d="${SHAPE}" fill="url(#pl-warm)" mask="url(#pl-cut-warm)"/>
+  </svg>
+  <svg class="dwell" ${BOX} aria-hidden="true">
+    <circle class="dwell-ring" r="${HOLE + 9}" pathLength="1" stroke-dasharray="0 1" transform="rotate(-90)"/>
+  </svg>`;
 
 export class BoardView {
   layout!: BoardLayout;
-  private glyphs = new Map<string, SVGElement>();
-  private glows = new Map<string, SVGElement>();
-  private litTimers = new Map<string, number>();
-  private hovered: string | null = null;
-  private planchette!: SVGGElement;
-  private lensClip!: SVGCircleElement;
-  private lensZoom!: SVGGElement;
-  private lensTop!: SVGGElement;
-  private dwellRing!: SVGCircleElement;
-  private nameplate!: SVGGElement;
-  private nameText!: SVGTextElement;
-  private surfaces = new Map<string, string>();
-  private placed = "";
+  readonly light = new CandleLight();
+  private readonly stage: Stage;
+  private readonly sky: Sky;
+  private readonly flame = new Flame();
+  private readonly smoke = new Motes(160, false);
+  private readonly embers = new Motes(60, true);
+  private readonly boards = new Map<string, BoardParticles>();
+  private board: BoardParticles | null = null;
+  private readonly glow = new Float32Array(MAX_GLYPHS);
+  private readonly litUntil = new Float64Array(MAX_GLYPHS);
+  private hoverSlot = -1;
+  private formStart = -1;
+  private formSeconds = 1;
+  private formed = 0;
+  private time = 0;
+  private emberDue = 0;
+  private shudderUntil = 0;
+  private box: DOMRect | null = null;
+  private pos: Point = { x: 0, y: 0 };
+  private angle = 0;
+  private readonly units: HTMLElement;
+  private readonly ring: HTMLElement;
+  private readonly planchette: HTMLElement;
+  private readonly warm: SVGSVGElement;
+  private readonly warmGradient: SVGLinearGradientElement;
+  private readonly dwellRing: SVGCircleElement;
 
   constructor(
-    readonly root: SVGSVGElement,
-    private readonly hand: SVGSVGElement,
-  ) {}
+    canvas: HTMLCanvasElement,
+    /** The board's box on the page: the particles line up with it, and the planchette is drawn in it. */
+    readonly table: HTMLElement,
+  ) {
+    this.stage = new Stage(canvas);
+    this.sky = new Sky(innerWidth * innerHeight > 900_000 ? 3600 : 2400);
+    this.stage.scene.add(this.sky.heavens, this.sky.nebula.points, this.sky.breeze.points, this.flame.group, this.smoke.points, this.embers.points);
+    this.smoke.points.renderOrder = 4;
+    this.embers.points.renderOrder = 7;
 
-  /** Draws the board; `devicePixels` is how many screen pixels wide it will show, for the surface's detail. */
-  render(layout: BoardLayout, devicePixels: number): void {
+    this.units = document.createElement("div");
+    this.units.id = "units";
+    this.ring = document.createElement("div");
+    this.ring.id = "center-ring";
+    this.planchette = document.createElement("div");
+    this.planchette.id = "planchette";
+    this.planchette.innerHTML = planchetteMarkup;
+    this.units.append(this.ring, this.planchette);
+    table.append(this.units);
+    this.warm = this.planchette.querySelector("svg.warm")!;
+    this.warmGradient = this.planchette.querySelector("#pl-warm")!;
+    this.dwellRing = this.planchette.querySelector(".dwell-ring")!;
+  }
+
+  /** Builds the board for a layout. Each layout's particles are made once and kept. */
+  setLayout(layout: BoardLayout): void {
     this.layout = layout;
-    this.glyphs.clear();
-    this.glows.clear();
-    this.hovered = null;
-    const { width, height } = layout;
-    for (const layer of [this.root, this.hand]) {
-      layer.replaceChildren();
-      layer.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    this.table.style.aspectRatio = `${layout.width} / ${layout.height}`;
+    Object.assign(this.units.style, { width: `${layout.width}px`, height: `${layout.height}px` });
+    const center = layout.elements.find((el) => el.id === "CENTER")!;
+    Object.assign(this.ring.style, {
+      left: `${center.x - center.rx}px`,
+      top: `${center.y - center.rx}px`,
+      width: `${center.rx * 2}px`,
+      height: `${center.rx * 2}px`,
+    });
+    this.fit(true);
+
+    if (this.board) this.stage.scene.remove(this.board.points);
+    let board = this.boards.get(layout.kind);
+    if (!board) {
+      board = buildBoard(layout, this.density());
+      board.points.material.uniforms.uGlow.value = this.glow;
+      this.boards.set(layout.kind, board);
     }
-    this.placed = "";
-
-    // Paint the surface at about the screen's resolution, so the dots stay crisp.
-    let surface = this.surfaces.get(layout.kind);
-    if (!surface) {
-      surface = paintBoard(layout, Math.min(1.6, Math.max(0.6, devicePixels / width)));
-      this.surfaces.set(layout.kind, surface);
-    }
-
-    const defs = svg("defs", {}, this.root);
-    defs.innerHTML = `
-      <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#fbfbfd"/><stop offset=".4" stop-color="#d4d4da"/><stop offset=".52" stop-color="#9c9ca6"/>
-        <stop offset=".64" stop-color="#d9d9df"/><stop offset="1" stop-color="#f1f1f5"/>
-      </linearGradient>
-      <linearGradient id="silver-bright" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#fff"/><stop offset=".52" stop-color="#d8d8e0"/><stop offset="1" stop-color="#fff"/>
-      </linearGradient>
-      <linearGradient id="silver-line" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${width}" y2="${height}">
-        <stop offset="0" stop-color="#e9e9ee"/><stop offset=".3" stop-color="#8f8f98"/><stop offset=".5" stop-color="#dcdce2"/>
-        <stop offset=".7" stop-color="#8a8a93"/><stop offset="1" stop-color="#e4e4ea"/>
-      </linearGradient>
-      <pattern id="glitter" width="34" height="34" patternUnits="userSpaceOnUse"></pattern>
-      <radialGradient id="glow"><stop class="glow-stop" offset="0" stop-opacity=".9"/><stop class="glow-stop" offset=".45" stop-opacity=".4"/><stop class="glow-stop" offset="1" stop-opacity="0"/></radialGradient>`;
-    glitter(defs.querySelector("#glitter")!, 34);
-
-    svg("image", { href: surface, x: 0, y: 0, width, height, preserveAspectRatio: "none" }, this.root);
-    this.drawFrame();
-
-    // Glows sit under the glyphs so a lit letter seems to shine from within the board.
-    const glowLayer = svg("g", { class: "glyph-glows" }, this.root);
-    const glyphLayer = svg("g", { class: "glyphs" }, this.root);
-    for (const el of layout.elements) {
-      const r = Math.max(el.rx, el.ry);
-      this.glows.set(
-        el.id,
-        svg("ellipse", { class: "glyph-glow", cx: el.x, cy: el.y, rx: el.kind === "word" ? el.rx * 1.15 : r * 1.3, ry: el.kind === "word" ? el.ry * 1.25 : r * 1.3, fill: "url(#glow)" }, glowLayer),
-      );
-      this.glyphs.set(el.id, this.drawGlyph(el, glyphLayer));
-    }
-
-    // Where a spirit's name appears once it gives it, beneath the moon.
-    const { nameplate } = layout;
-    this.nameplate = svg("g", { class: "nameplate" }, this.root);
-    this.nameText = svg("text", {
-      x: nameplate.x, y: nameplate.y, "text-anchor": "middle", "dominant-baseline": "central",
-      "font-family": FONT, "font-weight": 700, "font-size": nameplate.h * 0.7, "letter-spacing": 6, fill: "url(#silver)",
-    }, this.nameplate);
-
-    this.buildPlanchette();
+    this.board = board;
+    this.stage.scene.add(board.points);
+    this.sky.place(layout);
+    this.flame.place(layout);
+    this.light.position.copy(candleGeometry(layout).light);
+    shared.uLightRange.value = layout.kind === "wide" ? 470 : 360;
   }
 
-  private drawFrame(): void {
-    const { width, height, kind } = this.layout;
-    const frame = svg("g", { class: "frame", fill: "none", stroke: "url(#silver-line)", "stroke-linecap": "round" }, this.root);
-    // The board's bevelled edge catching a little light.
-    svg("rect", { x: 2, y: 2, width: width - 4, height: height - 4, rx: width * 0.024, ry: height * 0.032, stroke: "#fff", "stroke-opacity": 0.09, "stroke-width": 3 }, frame);
-    svg("path", { d: notchedRect(width, height, 26, 26, 40), "stroke-width": 2.6 }, frame);
-    svg("path", { d: notchedRect(width, height, 38, 26, 52), "stroke-width": 1.1, opacity: 0.75 }, frame);
-
-    const scale = kind === "tall" ? 0.85 : 1;
-    const corners: [number, number, number, number][] = [[0, 0, 1, 1], [width, 0, -1, 1], [0, height, 1, -1], [width, height, -1, -1]];
-    for (const [x, y, sx, sy] of corners) {
-      const g = svg("g", { transform: `translate(${x} ${y}) scale(${sx * scale} ${sy * scale})` }, frame);
-      svg("path", { d: CORNER, "stroke-width": 2.2 }, g);
-      svg("path", { d: CORNER_DOTS, "stroke-width": 3, "stroke-dasharray": "0 7.5" }, g);
-      svg("path", { d: diamond(70, 70, 6), fill: "url(#silver-line)", stroke: "none" }, g);
-    }
-    for (const [x, sx] of [[0, 1], [width, -1]]) {
-      const g = svg("g", { transform: `translate(${x} ${height / 2}) scale(${sx * scale} ${scale})` }, frame);
-      svg("path", { d: SIDE, "stroke-width": 2.2 }, g);
-      svg("path", { d: diamond(60, 0, 6), fill: "url(#silver-line)", stroke: "none" }, g);
-    }
+  /** Throws away the particles and samples the glyphs again, e.g. once the board's font has arrived. */
+  resample(): void {
+    for (const board of this.boards.values()) board.points.geometry.dispose();
+    this.boards.clear();
+    if (this.board) this.stage.scene.remove(this.board.points);
+    this.board = null;
+    this.setLayout(this.layout);
   }
 
-  private drawGlyph(el: BoardElement, parent: Element): SVGElement {
-    const g = svg("g", { class: `glyph ${el.kind}`, "data-id": el.id }, parent);
-    if (el.id === "CENTER") {
-      // Two dotted rings where the planchette rests, and is brought back to send.
-      svg("circle", { cx: el.x, cy: el.y, r: el.rx * 0.9, class: "ring", fill: "none", "stroke-width": 2.8, "stroke-linecap": "round", "stroke-dasharray": "0 8.6" }, g);
-      svg("circle", { cx: el.x, cy: el.y, r: el.rx * 0.68, class: "ring", fill: "none", "stroke-width": 1.8, "stroke-linecap": "round", "stroke-dasharray": "0 6.4", opacity: 0.6 }, g);
-      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
-        svg("path", { d: diamond(el.x + dx * el.rx * 1.12, el.y + dy * el.rx * 1.12, 3.4), class: "ring-mark" }, g);
-      }
-      return g;
-    }
-    const attrs: Attrs = {
-      x: el.x, y: el.y, "text-anchor": "middle", "dominant-baseline": "central", "font-family": FONT, "font-weight": 700,
-      "font-size": el.size,
-    };
-    if (el.rotate) attrs.transform = `rotate(${el.rotate.toFixed(2)} ${el.x.toFixed(1)} ${el.y.toFixed(1)})`;
-    if (el.kind === "word") attrs["letter-spacing"] = 5;
-    // Silver, then a grain of glitter over it.
-    svg("text", { ...attrs, class: "metal" }, g).textContent = el.label;
-    svg("text", { ...attrs, class: "grain" }, g).textContent = el.label;
-    return g;
+  /** Device pixels per board unit on the board's plane. */
+  private get pixels(): number {
+    return ((this.box?.width ?? 800) * Math.min(2, window.devicePixelRatio || 1)) / this.layout.width;
   }
 
-  private buildPlanchette(): void {
-    const s = this.layout.planchetteScale;
-    const defs = svg("defs", {}, this.hand);
-    defs.innerHTML = `
-      <linearGradient id="glass-body" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#2a2a31" stop-opacity=".86"/><stop offset=".55" stop-color="#0c0c0f" stop-opacity=".8"/>
-        <stop offset="1" stop-color="#050506" stop-opacity=".88"/>
-      </linearGradient>
-      <radialGradient id="shadow"><stop offset="0" stop-color="#000" stop-opacity=".7"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
-      <radialGradient id="glass" cx=".34" cy=".28" r=".85">
-        <stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset=".3" stop-color="#fff" stop-opacity=".05"/>
-        <stop offset=".8" stop-color="#000" stop-opacity=".06"/><stop offset="1" stop-color="#000" stop-opacity=".5"/>
-      </radialGradient>
-      <clipPath id="lens-clip"><circle r="${LENS_R}"/></clipPath>
-      <clipPath id="planchette-tip"><path d="${PLANCHETTE}" transform="translate(0 5) scale(0.9)"/></clipPath>`;
-    this.lensClip = defs.querySelector("#lens-clip circle")!;
+  /** Points to spend per square board unit of stroke: more where the screen has the pixels to show them. */
+  private density(): number {
+    return Math.min(0.6, Math.max(0.16, 0.55 * this.pixels ** 1.4));
+  }
 
-    this.planchette = svg("g", { class: "planchette" }, this.hand);
-    svg("ellipse", { cx: 16, cy: 66, rx: 132, ry: 150, fill: "url(#shadow)" }, this.planchette);
-    svg("path", { d: PLANCHETTE, class: "edge", fill: "url(#glass-body)", "stroke-width": 3.2 }, this.planchette);
-    svg("path", { d: PLANCHETTE, class: "edge", transform: "translate(0 5) scale(0.9)", fill: "none", "stroke-width": 1.3, opacity: 0.8 }, this.planchette);
-    // A sheen along the upper left of the glass.
-    svg("path", { d: "M -92 -26 C -88 -54 -56 -62 -26 -63", fill: "none", stroke: "#fff", "stroke-width": 3, "stroke-linecap": "round", opacity: 0.16 }, this.planchette);
+  /** The board gathers out of the dark over `seconds`. */
+  form(seconds: number): void {
+    this.formSeconds = seconds;
+    this.formStart = performance.now();
+    this.formed = 0;
+  }
 
-    // Filigree: a ring of dots round the window, scrolls below it and a net toward the tip.
-    const lace = svg("g", { class: "lace", fill: "none", "stroke-width": 2, "stroke-linecap": "round", opacity: 0.9 }, this.planchette);
-    svg("circle", { r: LENS_R + 11, "stroke-width": 2.8, "stroke-dasharray": "0 7.4" }, lace);
-    svg("path", {
-      d: [
-        "M 0 60 L 0 116",
-        "M 0 60 C 18 58 46 62 56 82 C 64 98 50 112 38 104 C 30 98 34 88 42 90",
-        "M 0 60 C -18 58 -46 62 -56 82 C -64 98 -50 112 -38 104 C -30 98 -34 88 -42 90",
-        "M 0 96 C 10 104 30 108 34 124 C 37 136 26 144 19 137 C 15 132 18 126 23 127",
-        "M 0 96 C -10 104 -30 108 -34 124 C -37 136 -26 144 -19 137 C -15 132 -18 126 -23 127",
-      ].join(" "),
-    }, lace);
-    const net = svg("g", { "clip-path": "url(#planchette-tip)", "stroke-width": 1.1, opacity: 0.75 }, lace);
-    let lines = "";
-    for (let i = -5; i <= 5; i++) lines += `M ${i * 11 - 40} 136 l 60 60 M ${i * 11 + 40} 136 l -60 60 `;
-    svg("path", { d: lines }, net);
-    svg("path", { d: diamond(0, 126, 5) + diamond(0, -58, 3.4), class: "lace-fill", stroke: "none" }, lace);
+  get forming(): boolean {
+    return this.formStart >= 0;
+  }
 
-    // The window shows the board beneath, magnified, in the same light. It doesn't turn with the body.
-    const { width, height } = this.layout;
-    const lens = svg("g", { "clip-path": "url(#lens-clip)" }, this.hand);
-    svg("rect", { x: 0, y: 0, width, height, fill: "#060607" }, lens);
-    this.lensZoom = svg("g", {}, lens);
-    for (const node of this.root.querySelectorAll(":scope > image, :scope > .frame, :scope > .glyphs")) {
-      this.lensZoom.appendChild(node.cloneNode(true));
+  /** Lines the scene up with the board's box, if the page has moved it. */
+  fit(force = false): void {
+    const box = this.table.getBoundingClientRect();
+    if (!force && this.box && box.left === this.box.left && box.top === this.box.top && box.width === this.box.width) {
+      this.stage.fit(box, this.layout);
+      return;
     }
-    svg("rect", { x: 0, y: 0, width, height, class: "lens-shade" }, lens);
-    svg("rect", { x: 0, y: 0, width, height, class: "lens-tint" }, lens);
+    this.box = box;
+    this.units.style.transform = `scale(${box.width / this.layout.width})`;
+    this.stage.fit(box, this.layout);
+  }
 
-    this.lensTop = svg("g", { class: "lens-top" }, this.hand);
-    svg("circle", { r: LENS_R, fill: "url(#glass)" }, this.lensTop);
-    svg("circle", { r: LENS_R + 1.5, fill: "none", stroke: "#f0f0f4", "stroke-width": 3 }, this.lensTop);
-    svg("circle", { r: LENS_R + 5.5, class: "dwell-track", fill: "none", "stroke-width": 3 }, this.lensTop);
-    this.dwellRing = svg("circle", {
-      r: LENS_R + 5.5, class: "dwell-ring", fill: "none", "stroke-width": 3.6, "stroke-linecap": "round",
-      pathLength: 1, "stroke-dasharray": "0 1", transform: "rotate(-90)",
-    }, this.lensTop);
-    this.lensTop.setAttribute("transform", `scale(${s})`);
+  tick(now: number, dt: number): void {
+    if (!this.board) return;
+    this.time += dt;
+    this.fit();
+    this.light.update(dt);
+
+    for (let i = 0; i < MAX_GLYPHS; i++) {
+      const target = (i === this.hoverSlot ? 0.35 : 0) + (now < this.litUntil[i] ? 0.55 : 0);
+      const tau = this.glow[i] > target ? 0.45 : 0.08;
+      this.glow[i] += (target - this.glow[i]) * (1 - Math.exp(-dt / tau));
+    }
+    if (this.formStart >= 0) {
+      this.formed = Math.min(1, (now - this.formStart) / (this.formSeconds * 1000));
+      if (this.formed >= 1) this.formStart = -1;
+    }
+
+    const { light } = this;
+    const candle = candleGeometry(this.layout);
+    shared.uTime.value = this.time;
+    shared.uFocal.value = this.stage.focal;
+    shared.uDistance.value = this.stage.distance;
+    shared.uDot.value = Math.min(1.6, Math.max(1, this.stage.pixels * 1.1));
+    shared.uLightPos.value.copy(light.position).setX(light.position.x + light.lean * candle.flame * 0.35);
+    shared.uLightColor.value.copy(light.color);
+    shared.uLightPower.value = light.power;
+    const uniforms = this.board.points.material.uniforms;
+    uniforms.uForm.value = this.formed;
+    uniforms.uBreeze.value = light.breeze;
+    (uniforms.uHole.value as { set(x: number, y: number, z: number): void }).set(this.pos.x, -this.pos.y, 1);
+
+    this.sky.update(this.time, light.breeze);
+    this.flame.update(light);
+    // Embers rise from the flame while it burns and drift off on the breeze.
+    if (light.level > 0.6 && this.time > this.emberDue) {
+      this.emberDue = this.time + 0.15 + Math.random() * 0.5;
+      this.embers.emit({
+        x: candle.x + (Math.random() - 0.5) * 8,
+        y: -candle.wickTop + candle.flame * (0.6 + Math.random() * 0.3),
+        vx: (Math.random() - 0.5) * 20,
+        vy: 50 + Math.random() * 80,
+        life: 1.2 + Math.random() * 1.4,
+        size: 3 + Math.random() * 3,
+        color: [light.color.r * 1.4, light.color.g * 1.3, light.color.b * 1.2],
+        alpha: 0.9,
+      });
+    }
+    this.smoke.update(dt, 30 * light.breeze + 6);
+    this.embers.update(dt, 60 * light.breeze);
+    this.lightPlanchette(candle.light);
+    const shake = Math.max(0, this.shudderUntil - now) / 750;
+    this.stage.render(shake * 9 * Math.sin(now * 0.09), shake * 6 * Math.cos(now * 0.13));
+  }
+
+  /** The whole board shudders, as when it wakes for a new sitter. */
+  shudder(): void {
+    this.shudderUntil = performance.now() + 750;
+  }
+
+  /** The side of the planchette facing the candle catches its light. */
+  private lightPlanchette(flame: { x: number; y: number }): void {
+    const dx = flame.x - this.pos.x;
+    const dy = -flame.y - this.pos.y;
+    const range = shared.uLightRange.value * 1.1;
+    const strength = Math.min(0.95, this.light.power / (1 + (dx * dx + dy * dy) / (range * range)));
+    this.warm.style.opacity = strength < 0.01 ? "0" : strength.toFixed(3);
+    if (strength < 0.01) return;
+    const toward = (Math.atan2(dy, dx) * 180) / Math.PI - this.angle;
+    this.warmGradient.setAttribute("gradientTransform", `rotate(${(toward + 180).toFixed(1)})`);
   }
 
   drawPlanchette(pos: Point, angle: number): void {
+    this.pos = pos;
+    this.angle = angle;
     const s = this.layout.planchetteScale;
-    const placed = `translate(${pos.x.toFixed(1)} ${pos.y.toFixed(1)}) rotate(${angle.toFixed(2)}) scale(${s})`;
-    // Nothing to redraw while it sits still.
-    if (placed === this.placed) return;
-    this.placed = placed;
-    this.planchette.setAttribute("transform", placed);
-    this.lensClip.setAttribute("cx", pos.x.toFixed(1));
-    this.lensClip.setAttribute("cy", pos.y.toFixed(1));
-    this.lensClip.setAttribute("r", String(LENS_R * s));
-    this.lensZoom.setAttribute(
-      "transform",
-      `translate(${pos.x.toFixed(1)} ${pos.y.toFixed(1)}) scale(${LENS_ZOOM}) translate(${(-pos.x).toFixed(1)} ${(-pos.y).toFixed(1)})`,
-    );
-    this.lensTop.setAttribute("transform", `translate(${pos.x.toFixed(1)} ${pos.y.toFixed(1)}) scale(${s})`);
+    this.planchette.style.transform = `translate(${pos.x.toFixed(1)}px, ${pos.y.toFixed(1)}px) rotate(${angle.toFixed(2)}deg) scale(${s})`;
   }
 
-  /** Progress of the dwell ring around the glass, 0..1. */
+  /** The planchette appears before anything else. */
+  showPlanchette(): void {
+    this.planchette.classList.add("here");
+  }
+
+  /** Progress of the ring around the window as the glass rests on a glyph, 0..1. */
   setDwell(progress: number): void {
     this.dwellRing.setAttribute("stroke-dasharray", `${progress.toFixed(3)} 1`);
   }
 
-  /** The center rings call the planchette home while something is spelled. */
+  /** The center ring calls the planchette home while something is spelled. */
   beckon(on: boolean): void {
-    this.glyphs.get("CENTER")?.classList.toggle("beckon", on);
-    this.glows.get("CENTER")?.classList.toggle("beckon", on);
+    this.ring.classList.toggle("beckon", on);
   }
 
   hover(id: string | null): void {
-    if (id === this.hovered) return;
-    if (this.hovered) this.glyphs.get(this.hovered)?.classList.remove("hover");
-    this.hovered = id;
-    if (id) this.glyphs.get(id)?.classList.add("hover");
+    this.hoverSlot = id ? (this.board?.slots.get(id) ?? -1) : -1;
   }
 
   /** Lights a glyph from within for a moment. */
   flash(id: string, ms = 900): void {
-    const glyph = this.glyphs.get(id);
-    const glow = this.glows.get(id);
-    if (!glyph || !glow) return;
-    glyph.classList.add("lit");
-    glow.classList.add("on");
-    clearTimeout(this.litTimers.get(id));
-    this.litTimers.set(
-      id,
-      window.setTimeout(() => {
-        glyph.classList.remove("lit");
-        glow.classList.remove("on");
-      }, ms),
-    );
+    if (id === "CENTER") {
+      this.ring.classList.remove("flash");
+      void this.ring.offsetWidth;
+      this.ring.classList.add("flash");
+      return;
+    }
+    const slot = this.board?.slots.get(id);
+    if (slot === undefined) return;
+    this.glow[slot] = 1.3;
+    this.litUntil[slot] = performance.now() + ms;
   }
 
-  engraveName(name: string | null): void {
-    this.nameText.textContent = name ? name.toUpperCase() : "";
-    this.nameplate.classList.toggle("engraved", Boolean(name));
+  /** Lights the candle (with its breeze), or snuffs it with a curl of smoke. */
+  setCandle(lit: boolean): void {
+    if (!lit && this.light.lit && this.layout) {
+      const candle = candleGeometry(this.layout);
+      for (let i = 0; i < 46; i++) {
+        this.smoke.emit({
+          x: candle.x + (Math.random() - 0.5) * 6,
+          y: -candle.wickTop + Math.random() * 10,
+          vx: (Math.random() - 0.5) * 12,
+          vy: 35 + Math.random() * 45,
+          life: 2 + Math.random() * 1.8,
+          age: -Math.random() * 0.9,
+          size: 12 + Math.random() * 12,
+          grow: 2.6,
+          color: [0.6, 0.6, 0.64],
+          alpha: 0.32,
+        });
+      }
+    }
+    this.light.set(lit);
+  }
+
+  setLightColor(hex: string): void {
+    this.light.setColor(hex);
+    for (const stop of this.planchette.querySelectorAll(".pl-warm-stop")) stop.setAttribute("stop-color", hex);
   }
 
   toBoard(clientX: number, clientY: number): Point {
-    const p = new DOMPoint(clientX, clientY).matrixTransform(this.root.getScreenCTM()!.inverse());
-    return { x: p.x, y: p.y };
+    const box = this.box ?? this.table.getBoundingClientRect();
+    const k = box.width / this.layout.width;
+    return { x: (clientX - box.left) / k, y: (clientY - box.top) / k };
   }
 
   toScreen(p: Point): Point {
-    const s = new DOMPoint(p.x, p.y).matrixTransform(this.root.getScreenCTM()!);
-    return { x: s.x, y: s.y };
+    const box = this.box ?? this.table.getBoundingClientRect();
+    const k = box.width / this.layout.width;
+    return { x: box.left + p.x * k, y: box.top + p.y * k };
   }
 }

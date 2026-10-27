@@ -9,7 +9,7 @@ import { build } from "vite";
 
 const OUT = "dist-artifact";
 const FONTS =
-  "https://fonts.googleapis.com/css2?family=Kalnia:wght@700&family=IM+Fell+English:ital@0;1&display=swap";
+  "https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap";
 
 await build({ configFile: "vite.artifact.config.ts", logLevel: "warn" });
 

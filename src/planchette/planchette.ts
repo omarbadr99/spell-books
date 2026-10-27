@@ -4,8 +4,8 @@
 import type { Point } from "../board/layout";
 import type { BoardView } from "../board/render";
 
-/** The planchette's body, which fingers can take hold of: an ellipse around the glass and below it. */
-const BODY = { dy: 52, rx: 120, ry: 152 };
+/** The planchette's body, which fingers can take hold of: an ellipse around the window and up to its point. */
+const BODY = { dy: -30, rx: 112, ry: 132 };
 const EDGE = 44;
 /** Finger movement smaller than this (board units) is jitter, not a move. */
 const JITTER = 10;

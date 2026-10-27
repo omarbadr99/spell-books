@@ -19,5 +19,6 @@ export default defineConfig({
     outDir: "dist-artifact",
     emptyOutDir: true,
     modulePreload: false,
+    chunkSizeWarningLimit: 700,
   },
 });

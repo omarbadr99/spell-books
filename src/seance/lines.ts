@@ -1,5 +1,6 @@
-// The two lines of writing around the board: the sitters' ink on the paper slip,
-// and the spirit's glowing reply above the board.
+// The writing above the board: the sitters' message as they spell it, and the
+// spirit's glowing reply, which take turns in the same place. Voice says whose
+// turn it is.
 
 const SOAK_STAGGER_MS = 45;
 const SOAK_MS = 1100;
@@ -76,6 +77,7 @@ export class InkLine {
 
 export class SpiritLine {
   private fadeTimer = 0;
+  private doneTimer = 0;
   /** Letters of the word being spelled, kept together so a line never breaks mid-word. */
   private word: HTMLElement | null = null;
 
@@ -87,6 +89,7 @@ export class SpiritLine {
 
   begin(): void {
     clearTimeout(this.fadeTimer);
+    clearTimeout(this.doneTimer);
     this.el.classList.remove("fading");
     this.el.replaceChildren();
     this.word = null;
@@ -109,8 +112,43 @@ export class SpiritLine {
     this.el.append(document.createTextNode(" "));
   }
 
-  fadeLater(ms = 3400): void {
+  /** Fades the reply after `ms`, then calls `done` once it has gone. */
+  fadeLater(ms = 3400, done?: () => void): void {
     clearTimeout(this.fadeTimer);
+    clearTimeout(this.doneTimer);
     this.fadeTimer = window.setTimeout(() => this.el.classList.add("fading"), ms);
+    if (done) this.doneTimer = window.setTimeout(done, ms + 1800);
+  }
+}
+
+/** Whose words show above the board, and the label over them: the sitters' message, or the spirit. */
+export class Voice {
+  private name: string | null = null;
+
+  constructor(
+    private readonly el: HTMLElement,
+    private readonly label: HTMLElement,
+  ) {
+    this.sitters();
+  }
+
+  get speaker(): string {
+    return this.el.dataset.speaker ?? "sitters";
+  }
+
+  sitters(): void {
+    this.el.dataset.speaker = "sitters";
+    this.label.textContent = "Your message";
+  }
+
+  spirit(): void {
+    this.el.dataset.speaker = "spirit";
+    this.label.textContent = this.name ?? "The spirit";
+  }
+
+  /** Once the spirit gives its name, its words go under that name. */
+  setName(name: string | null): void {
+    this.name = name;
+    if (this.speaker === "spirit") this.label.textContent = name ?? "The spirit";
   }
 }

@@ -1,8 +1,5 @@
-import "@fontsource/kalnia/700.css";
-import "@fontsource/im-fell-english/400.css";
-import "@fontsource/im-fell-english/400-italic.css";
+import "@fontsource/cinzel/700.css";
 import "./styles.css";
-import "./fx/atmosphere.css";
 
 import {
   boardWidthFor,
@@ -20,26 +17,37 @@ import { DwellDetector } from "./planchette/dwell";
 import { Planchette } from "./planchette/planchette";
 import { Possessor } from "./planchette/possess";
 import { EndCard } from "./seance/endcard";
-import { InkLine, SpiritLine } from "./seance/lines";
+import { InkLine, SpiritLine, Voice } from "./seance/lines";
 import { Seance } from "./seance/machine";
 import { Ticker } from "./ticker";
 
 /** How long the glass rests on a glyph to choose it, once the fingers have stopped. A pause is enough. */
 const DWELL_MS = 130;
+/** The board's own lettering, which the particles are sampled from. */
+const BOARD_FONT = "700 80px Cinzel";
 
 // ?speed=4 runs the spirits faster; only honoured in development, for the tests.
 const speed = import.meta.env.DEV ? Math.max(1, Number(new URLSearchParams(location.search).get("speed")) || 1) : 1;
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const roomEl = $<HTMLElement>("#room");
-const boardEl = $<SVGSVGElement>("#board");
+const table = $<HTMLElement>("#table");
+
+let view: BoardView;
+try {
+  view = new BoardView($<HTMLCanvasElement>("#scene"), table);
+} catch (error) {
+  $("#hint").textContent = "This board is drawn with WebGL, which this browser has turned off.";
+  throw error;
+}
 
 const ticker = new Ticker();
-const view = new BoardView(boardEl, $<SVGSVGElement>("#hand"));
 const planchette = new Planchette(view);
 const possessor = new Possessor(planchette, view, ticker, speed);
 const sound = new SoundScape();
-const room = new Room(roomEl, $("#table"), $("#hint"));
+const room = new Room(roomEl, view, $("#hint"));
+const voice = new Voice($("#voice"), $("#voice-label"));
 
 let layout: BoardLayout = buildLayout(chooseLayoutKind(innerWidth, innerHeight));
 // The center needs no wait: stopping the glass there sends what was spelled.
@@ -57,6 +65,7 @@ const seance: Seance = new Seance({
   dwell,
   ink: new InkLine($("#ink-line")),
   spiritLine: new SpiritLine($("#spirit-line")),
+  voice,
   endCard: new EndCard($("#endcard"), () => seance.dismissEndCard()),
   sound,
   sleep: (ms) => possessor.wait(ms),
@@ -70,33 +79,34 @@ function applyLayout(kind: LayoutKind, first = false): void {
   const previous = layout;
   layout = buildLayout(kind);
   room.setLayout(kind);
-  view.render(layout, boardWidthFor(layout, innerWidth, innerHeight) * (window.devicePixelRatio || 1));
   sizeBoard();
+  view.setLayout(layout);
   planchette.place(
     first
       ? layout.rest
       : { x: (planchette.pos.x / previous.width) * layout.width, y: (planchette.pos.y / previous.height) * layout.height },
   );
   seance.restoreBoard();
+  if (!first) view.form(calm ? 0.01 : 1.6);
 }
 
-// Fingers on the planchette.
-boardEl.addEventListener("pointerdown", (e) => {
-  if (!e.isPrimary) return;
+// Fingers on the planchette, which may hang a little over the board's edge.
+addEventListener("pointerdown", (e) => {
+  if (!e.isPrimary || (e.target as Element).closest("#endcard, #mute, #voice")) return;
   const p = view.toBoard(e.clientX, e.clientY);
   if (!planchette.canGrab(p)) return;
   e.preventDefault();
   sound.unlock();
   if (!seance.sittersHaveIt || planchette.driven) return;
   planchette.grab(p);
-  boardEl.setPointerCapture(e.pointerId);
+  table.setPointerCapture(e.pointerId);
 });
-boardEl.addEventListener("pointermove", (e) => {
+table.addEventListener("pointermove", (e) => {
   if (planchette.held) planchette.dragTo(view.toBoard(e.clientX, e.clientY));
 });
 const letGo = () => {
   if (!planchette.held) return;
-  // Letting go with the glass on the center sends too, however briefly it was there.
+  // Letting go with the window on the center sends too, however briefly it was there.
   const aim = planchette.aim;
   const center = hitTest(layout, aim.x, aim.y);
   planchette.release();
@@ -104,10 +114,10 @@ const letGo = () => {
   view.setDwell(0);
   if (center?.id === "CENTER" && !planchette.driven) seance.onSelect(center);
 };
-boardEl.addEventListener("pointerup", letGo);
-boardEl.addEventListener("pointercancel", letGo);
-// Tapping the paper slip rubs out the last letter.
-$("#slip").addEventListener("click", () => seance.unsay());
+table.addEventListener("pointerup", letGo);
+table.addEventListener("pointercancel", letGo);
+// Tapping the message rubs out its last letter.
+$("#voice").addEventListener("click", () => seance.unsay());
 
 // iOS only starts audio from certain gestures, so try on each of them.
 for (const type of ["pointerdown", "touchend", "click"]) document.addEventListener(type, () => sound.unlock());
@@ -125,6 +135,7 @@ ticker.add((now, dt) => {
     view.hover(null);
   }
 });
+ticker.onDraw((now, dt) => view.tick(now, dt));
 
 let resizeTimer = 0;
 addEventListener("resize", () => {
@@ -149,10 +160,18 @@ mute.addEventListener("click", () => {
 });
 
 if (import.meta.env.DEV) {
-  // Hooks for the Playwright suite.
+  // Hooks for the Playwright suite, which also gets every phase the séance passes through.
+  const visited: string[] = [];
+  const setPhase = room.setPhase.bind(room);
+  room.setPhase = (phase) => {
+    visited.push(phase);
+    setPhase(phase);
+  };
   Object.assign(window, {
     __board: {
       phase: () => seance.phase,
+      visited: () => visited.length,
+      since: (from: number) => visited.slice(from),
       spirit: () => seance.spirit?.id ?? null,
       lens: () => view.toScreen(planchette.pos),
       glyph: (id: string) => {
@@ -162,19 +181,36 @@ if (import.meta.env.DEV) {
       lastTarget: () => possessor.lastTarget,
       spiritLine: () => $("#spirit-line").textContent,
       ink: () => seance.inkText,
+      speaker: () => `${$("#voice").getAttribute("data-speaker")}:${$("#voice-label").textContent}`,
+      forming: () => view.forming,
     },
   });
 }
 
 async function start(): Promise<void> {
-  await Promise.race([
-    document.fonts.load("700 40px Kalnia").catch(() => undefined),
-    new Promise((resolve) => setTimeout(resolve, 1500)),
+  // The particles are sampled from the board's lettering, so wait (a little) for it.
+  const fontReady = await Promise.race([
+    document.fonts.load(BOARD_FONT).then((faces) => faces.length > 0, () => false),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
   ]);
   applyLayout(layout.kind, true);
   showMute();
   requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("preload")));
   ticker.start();
+
+  // First the planchette, alone in the dark; then the board gathers around it.
+  view.showPlanchette();
+  window.setTimeout(() => view.form(calm ? 0.01 : 4.2), calm ? 0 : 700);
+  if (!fontReady) {
+    // If the lettering turns up late, sample it again and let the board re-form.
+    const late = () => {
+      if (!document.fonts.check(BOARD_FONT)) return;
+      document.fonts.removeEventListener("loadingdone", late);
+      view.resample();
+      view.form(calm ? 0.01 : 1.4);
+    };
+    document.fonts.addEventListener("loadingdone", late);
+  }
   await seance.boot();
 }
 

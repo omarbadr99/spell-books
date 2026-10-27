@@ -13,7 +13,11 @@ const ROUTES = ["me", "enter", "ask"];
 rmSync(OUT, { recursive: true, force: true });
 
 // The page, without the Cloudflare plugin.
-await build({ configFile: false, logLevel: "warn", build: { outDir: `${OUT}/static`, emptyOutDir: true } });
+await build({
+  configFile: false,
+  logLevel: "warn",
+  build: { outDir: `${OUT}/static`, emptyOutDir: true, chunkSizeWarningLimit: 700 },
+});
 
 // The API, bundled with its dependencies into a single file.
 const first = `${OUT}/functions/api/${ROUTES[0]}.func`;

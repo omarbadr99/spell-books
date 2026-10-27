@@ -3,61 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#030304" />
-    <meta name="description" content="A talking board by moonlight. Spell HI with the planchette, the candles light, and a spirit answers." />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="A talking board made of light. Say hello with the planchette, the candle lights, and a spirit answers." />
     <title>Spirit Board</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body class="preload">
     <main id="room" class="phase-booting">
-      <div class="glow" aria-hidden="true"></div>
-      <div class="fog fog-a" aria-hidden="true"></div>
-      <div class="fog fog-b" aria-hidden="true"></div>
+      <canvas id="scene" aria-hidden="true"></canvas>
+      <div class="vignette" aria-hidden="true"></div>
 
       <div id="stage">
-        <p id="spirit-line" aria-live="polite"></p>
-        <div id="table">
-          <div id="surface">
-            <svg id="board" role="img" aria-label="A black and silver talking board with a planchette"></svg>
-            <div class="board-shade" aria-hidden="true"></div>
-            <div class="board-tint" aria-hidden="true"></div>
-            <div class="board-pools" aria-hidden="true"></div>
+        <header id="voice" title="Tap to rub out a letter">
+          <p id="voice-label">Your message</p>
+          <div id="voice-lines">
+            <p id="ink-line" aria-live="polite"></p>
+            <p id="spirit-line" aria-live="polite"></p>
           </div>
-          <svg id="hand" aria-hidden="true"></svg>
-          <div class="candle tl" style="--i: 0" aria-hidden="true">
-            <div class="pool"></div>
-            <div class="wax"></div>
-            <div class="wick"></div>
-            <div class="flame"></div>
-            <div class="smoke"></div>
-          </div>
-          <div class="candle tr" style="--i: 1" aria-hidden="true">
-            <div class="pool"></div>
-            <div class="wax"></div>
-            <div class="wick"></div>
-            <div class="flame"></div>
-            <div class="smoke"></div>
-          </div>
-          <div class="candle br" style="--i: 2" aria-hidden="true">
-            <div class="pool"></div>
-            <div class="wax"></div>
-            <div class="wick"></div>
-            <div class="flame"></div>
-            <div class="smoke"></div>
-          </div>
-          <div class="candle bl" style="--i: 3" aria-hidden="true">
-            <div class="pool"></div>
-            <div class="wax"></div>
-            <div class="wick"></div>
-            <div class="flame"></div>
-            <div class="smoke"></div>
-          </div>
-        </div>
-        <div id="slip" title="Tap to rub out a letter"><p id="ink-line" aria-live="polite"></p></div>
+        </header>
+        <div id="table" role="img" aria-label="A talking board made of light, with a planchette"></div>
         <p id="hint"></p>
       </div>
-
-      <div class="vignette" aria-hidden="true"></div>
 
       <button id="mute" type="button" aria-label="Mute sound" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true">

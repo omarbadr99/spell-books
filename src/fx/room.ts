@@ -1,5 +1,5 @@
-// The room around the board: phase classes, the candles, their color and hints.
-// The look itself lives in atmosphere.css.
+// The room around the board: phase classes, the candle and its color, and hints.
+// The candle itself is drawn by the scene; this tells it what to do.
 
 import type { PublicSpirit } from "../../shared/presence";
 import type { LayoutKind } from "../board/layout";
@@ -16,8 +16,17 @@ export type Phase =
   | "ending"
   | "ended";
 
-/** Moonlight, before any spirit lights the candles. */
+/** What the room asks of the scene. */
+export interface Scenery {
+  setCandle(lit: boolean): void;
+  setLightColor(hex: string): void;
+  shudder(): void;
+}
+
+/** Moonlight, before any spirit lights the candle. */
 const MOONLIGHT = "#d6d8e2";
+/** Plain candlelight, if the candle is ever lit with no spirit. */
+const CANDLE = "#ef8e34";
 
 const toRgb = (hex: string) => {
   const n = parseInt(hex.slice(1), 16);
@@ -25,11 +34,9 @@ const toRgb = (hex: string) => {
 };
 
 export class Room {
-  private snuffTimer = 0;
-
   constructor(
     private readonly el: HTMLElement,
-    private readonly table: HTMLElement,
+    private readonly scenery: Scenery,
     private readonly hintEl: HTMLElement,
   ) {}
 
@@ -44,27 +51,23 @@ export class Room {
     this.el.classList.toggle("layout-wide", kind === "wide");
   }
 
-  /** The candle color, which lights the room, the glows and the spirit's words. */
+  /** The candle's color, which lights the board, the breeze and the spirit's words. */
   setSpirit(spirit: PublicSpirit | null): void {
     const rgb = toRgb(spirit?.color ?? MOONLIGHT);
     const light = rgb.map((c) => Math.round(c + (255 - c) * 0.4));
     this.el.style.setProperty("--spirit-rgb", rgb.join(", "));
     this.el.style.setProperty("--spirit-light", `rgb(${light.join(", ")})`);
+    this.scenery.setLightColor(spirit?.color ?? CANDLE);
   }
 
-  /** Lights the four candles one after another, or snuffs them out with a wisp of smoke. */
+  /** Lights the candle, bringing the breeze of a presence, or snuffs it out. */
   setCandles(lit: boolean): void {
-    if (this.el.classList.contains("candles-lit") === lit) return;
     this.el.classList.toggle("candles-lit", lit);
-    clearTimeout(this.snuffTimer);
-    this.el.classList.toggle("snuffing", !lit);
-    if (!lit) this.snuffTimer = window.setTimeout(() => this.el.classList.remove("snuffing"), 2600);
+    this.scenery.setCandle(lit);
   }
 
   shudder(): void {
-    this.table.classList.remove("shudder");
-    void this.table.offsetWidth;
-    this.table.classList.add("shudder");
+    this.scenery.shudder();
   }
 
   hint(text: string): void {
