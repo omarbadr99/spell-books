@@ -1,23 +1,21 @@
 // The board's four endpoints. Kept free of Workers-only globals so the tests
 // can drive it in Node with a fake Claude client.
 
-import type Anthropic from "@anthropic-ai/sdk";
 import { spiritById } from "../shared/presence";
 import { MAX_HISTORY, type Turn } from "../shared/seance";
-import { MAX_QUESTION_CHARS, sanitizeQuestion, sanitizeReply } from "../shared/text";
+import { isGreeting, MAX_QUESTION_CHARS, sanitizeQuestion, sanitizeReply } from "../shared/text";
 import { issueSeat, readSeat, seatCookie, wordMatches } from "./auth";
 import { mockReply } from "./mock";
-import { askSpirit, buildMessages } from "./spirit";
+import { askSpirit, type SpiritClient } from "./spirit";
 import { personaFor } from "./spirits";
 
 export interface ApiDeps {
-  createClient: (apiKey: string) => Pick<Anthropic, "messages">;
+  createClient: (apiKey: string) => SpiritClient;
 }
 
+/** A question for a spirit. The séance's first question is the sitters' greeting, with no history. */
 interface AskBody {
   spiritId: string;
-  openerIndex: number;
-  greeting: string;
   history: Turn[];
   question: string;
 }
@@ -56,7 +54,6 @@ export async function handleApi(request: Request, env: Env, deps: ApiDeps): Prom
       if (!(await env.ASK_LIMITER.limit({ key: deviceId })).success) return json({ error: "slow" }, 429);
 
       const spirit = spiritById(ask.spiritId)!;
-      const opener = spirit.openers[ask.openerIndex];
       if (env.MOCK_SPIRIT === "1") {
         return json({ reply: mockReply(spirit, ask.question, ask.history.length) });
       }
@@ -65,11 +62,14 @@ export async function handleApi(request: Request, env: Env, deps: ApiDeps): Prom
         return json({ error: "silent" }, 502);
       }
 
+      // Each spirit answers on its namesake model, unless SPIRIT_MODEL puts them all on one.
+      const persona = personaFor(spirit.id)!;
       const answer = await askSpirit(
         deps.createClient(env.ANTHROPIC_API_KEY),
-        env.SPIRIT_MODEL,
-        personaFor(spirit.id)!,
-        buildMessages(opener, ask.history, ask.question, ask.greeting),
+        env.SPIRIT_MODEL || persona.model,
+        persona,
+        ask.history,
+        ask.question,
       );
       if (answer.kind === "busy") return json({ error: "slow" }, 429);
       if (answer.kind === "silent") return json({ error: "silent" }, 502);
@@ -99,16 +99,16 @@ async function readJson<T = unknown>(request: Request): Promise<T | null> {
   }
 }
 
-/** Validates an ask body; sitters' turns must alternate with the spirit's, sitters first. */
+/**
+ * Validates an ask body. Sitters' turns must alternate with the spirit's,
+ * sitters first, and the séance must have opened with a greeting.
+ */
 export function parseAsk(body: unknown): AskBody | null {
   if (!body || typeof body !== "object") return null;
-  const { spiritId, openerIndex, greeting, history, question } = body as Record<string, unknown>;
+  const { spiritId, history, question } = body as Record<string, unknown>;
   if (typeof spiritId !== "string" || !spiritById(spiritId) || !personaFor(spiritId)) return null;
-  const spirit = spiritById(spiritId)!;
-  if (typeof openerIndex !== "number" || !Number.isInteger(openerIndex) || !spirit.openers[openerIndex]) return null;
   if (!Array.isArray(history) || history.length > MAX_HISTORY || history.length % 2 !== 0) return null;
   if (typeof question !== "string") return null;
-  if (greeting !== undefined && typeof greeting !== "string") return null;
 
   const turns: Turn[] = [];
   for (const [i, raw] of history.entries()) {
@@ -122,6 +122,6 @@ export function parseAsk(body: unknown): AskBody | null {
   }
 
   const cleanQuestion = sanitizeQuestion(question);
-  if (!cleanQuestion) return null;
-  return { spiritId, openerIndex, greeting: sanitizeQuestion(greeting ?? ""), history: turns, question: cleanQuestion };
+  if (!cleanQuestion || !isGreeting(turns[0]?.text ?? cleanQuestion)) return null;
+  return { spiritId, history: turns, question: cleanQuestion };
 }

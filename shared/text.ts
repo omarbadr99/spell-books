@@ -87,6 +87,56 @@ export function saysGoodbye(reply: string): boolean {
   return reply.split(" ").includes("GOODBYE");
 }
 
+/** Greetings that are words in their own right, written with each run of a letter squeezed to one (HELLO is HELO). */
+const HELLOS = [
+  "HELO", "HALO", "HULO", "HEY", "HEYA", "HEYO", "HIYA", "HOWDY", "HOLA", "WASUP", "WHATSUP", "GRETINGS", "WELCOME",
+  "GODMORNING", "GODAFTERNON", "GODEVENING", "GODAY", "GDAY", "SALUT", "CIAO", "ALOHA", "NAMASTE", "SHALOM", "SALAM",
+  "ASALAM", "MARHABA", "AHLAN", "BONJOUR", "BONSOIR", "KONICHIWA", "AHOY", "HOWAREYOU", "HOWDOYOUDO",
+];
+/** Short greetings that begin plenty of other words (HIDE, YOUR, OIL), so only count with nothing or a greeting's usual words after them. */
+const SHORT_HELLOS = ["HI", "HAI", "HOI", "YO", "OI", "OLA", "SUP"];
+const AFTER_HELLO = [
+  "THERE", "EVERY", "AL", "YOU", "YA", "YAL", "SPIRIT", "GHOST", "GUYS", "FOLKS", "FRIEND", "BOARD", "IM", "IAM", "ITS",
+  "ME", "WE", "AGAIN", "ANY", "SOME", "MY", "DEAR", "SIR", "MADAM", "MIS", "MR", "MS", "BRO", "MATE", "PAL", "HAIKU",
+  "SONET", "FABLE", "OPUS", "HI", "HEY", "HELO", "IS", "ARE", "WHO", "CAN",
+];
+/** The old questions every séance opens with: IS ANYONE THERE, WHO IS HERE, SPIRITS ARE YOU WITH US. */
+const PRESENCE =
+  /(ANY|SOME)(ONE|BODY)(THERE|HERE|OUT|AROUND|LISTEN|AWAKE|PRESENT|WITHUS|HEAR|$)|(IS|ARE)THERE(A|ANY|SOME)?(ONE|BODY|SPIRIT|GHOST|SOUL|PRESENCE)|WHO(S|IS)?(THERE|HERE)|AREYOU(THERE|HERE|WITHUS|AWAKE|LISTENING|PRESENT)|(SPIRIT|GHOST)S?(ARE|IS)?(YOU|ANY)?(THERE|HERE|PRESENT|WITHUS)|CANYOUHEAR(ME|US)|(SPEAK|TALK)TO(ME|US)|SUMON|COMEFORTH|SHOWYOURSELF/;
+
+/** A word as a pattern that also matches it typed with held keys: HELO matches HELLLO. */
+const loosely = (word: string) => word.replace(/./g, "$&+");
+const GREETING = new RegExp(
+  `^(?:(?:${HELLOS.map(loosely).join("|")})|(?:${SHORT_HELLOS.map(loosely).join("|")})(?:$|${AFTER_HELLO.map(loosely).join("|")}))`,
+);
+
+/**
+ * True when the sitters' words are a greeting: a hello in some language, or a
+ * call into the dark like IS ANYONE THERE. Only a greeting opens a séance.
+ */
+export function isGreeting(text: string): boolean {
+  const letters = normalizeBoardWord(text).replace(/[0-9]/g, "");
+  return GREETING.test(letters) || PRESENCE.test(letters.replace(/(.)\1+/g, "$1"));
+}
+
+/** Questions that start like ARE YOU, IS IT, CAN I or WILL WE expect a YES or a NO. */
+const YES_NO =
+  /^(ARE|IS|AM|DO|DOES|DID|CAN|COULD|WILL|WOULD|SHOULD|SHALL|WAS|WERE|HAVE|HAS|HAD|MAY|MIGHT|MUST|WONT|CANT|DONT|DOESNT|DIDNT|ISNT|ARENT|WASNT)(YOU|U|I|WE|THEY|HE|SHE|IT|THERE|THIS|THAT|THESE|THOSE|MY|YOUR|OUR|HIS|HER|THEIR|ANY|SOME|A|AN|THE|$)/;
+
+export function isYesNoQuestion(question: string): boolean {
+  return YES_NO.test(normalizeBoardWord(question));
+}
+
+/**
+ * A yes/no question gets a bare YES or NO: when the reply opens with one, the
+ * rest is dropped (but a closing GOODBYE stays, since the spirit is leaving).
+ */
+export function preferYesNo(question: string, reply: string): string {
+  const [first] = reply.split(" ");
+  if (!isYesNoQuestion(question) || (first !== "YES" && first !== "NO")) return reply;
+  return saysGoodbye(reply) ? `${first} GOODBYE` : first;
+}
+
 /** True when the reply names the spirit (any of its reveal words, or the whole name run together). */
 export function revealsName(reply: string, revealWords: readonly string[], fullName: string): boolean {
   const words = reply.split(" ");

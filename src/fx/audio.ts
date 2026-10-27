@@ -6,7 +6,7 @@ import type { Signature, SpiritSound } from "../../shared/presence";
 const MUTE_KEY = "spirit-board:muted";
 const VOLUME = 0.9;
 const PENTATONIC = [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3];
-const WAVE_LEVEL: Record<SpiritSound["wave"], number> = { sine: 1, triangle: 0.8, sawtooth: 0.3, square: 0.26 };
+const WAVE_LEVEL: Record<SpiritSound["wave"], number> = { sine: 1, triangle: 0.8, sawtooth: 0.3 };
 
 function readMuted(): boolean {
   try {
@@ -22,10 +22,13 @@ export class SoundScape {
   private master!: GainNode;
   private droneBus!: GainNode;
   private scrapeGain!: GainNode;
+  private windGain!: GainNode;
+  private windBand!: BiquadFilterNode;
   private noise!: AudioBuffer;
   private stopDrone: ((at: number) => void) | null = null;
   private signatureTimer = 0;
   private lastScrape = 0;
+  private lastWind = 0;
   private root = 147;
 
   /** Browsers only allow sound after a gesture, so call this from one. */
@@ -61,6 +64,16 @@ export class SoundScape {
     this.scrapeGain.gain.value = 0;
     scrape.connect(band).connect(low).connect(this.scrapeGain).connect(this.master);
     scrape.start();
+
+    // The wind: noise through a band that rises and narrows into a moan as it blows harder.
+    const air = ctx.createBufferSource();
+    air.buffer = this.noise;
+    air.loop = true;
+    this.windBand = this.filter("bandpass", 260, 0.8);
+    this.windGain = ctx.createGain();
+    this.windGain.gain.value = 0;
+    air.connect(this.windBand).connect(this.windGain).connect(this.master);
+    air.start(0, 0.7);
   }
 
   setMuted(muted: boolean): void {
@@ -80,6 +93,16 @@ export class SoundScape {
     if (Math.abs(level - this.lastScrape) < 0.004) return;
     this.lastScrape = level;
     this.scrapeGain.gain.setTargetAtTime(level, this.ctx.currentTime, 0.05);
+  }
+
+  /** Called every frame with how hard the wind is blowing, 0..1. */
+  wind(level: number): void {
+    if (!this.ctx || Math.abs(level - this.lastWind) < 0.01) return;
+    this.lastWind = level;
+    const t = this.ctx.currentTime;
+    this.windGain.gain.setTargetAtTime(0.22 * level * level, t, 0.25);
+    this.windBand.frequency.setTargetAtTime(220 + 900 * level, t, 0.3);
+    this.windBand.Q.setTargetAtTime(0.8 + 2.6 * level, t, 0.3);
   }
 
   /** A spirit arrives: its drone swells and its signature sounds. */
@@ -168,6 +191,11 @@ export class SoundScape {
     const t = this.ctx.currentTime + 0.05;
     const r = this.root;
     switch (signature) {
+      case "bell":
+        [[1, 4, 0.08], [2, 3, 0.04], [2.76, 2.4, 0.03], [4.07, 1.6, 0.015], [5.4, 1.2, 0.01]].forEach(([k, d, g]) =>
+          this.tone(r * 2 * k, t, d, "sine", g, 0.004),
+        );
+        break;
       case "musicbox":
         for (let i = 0; i < 6; i++) {
           const f = r * 4 * PENTATONIC[Math.floor(Math.random() * 5)] * (Math.random() < 0.3 ? 2 : 1);
@@ -175,45 +203,15 @@ export class SoundScape {
           this.tone(f * 2, t + i * 0.3, 0.5, "triangle", 0.012);
         }
         break;
-      case "waves":
-        for (const start of [0, 2.6]) this.wash(t + start, 4.2, 900, 0.13);
-        this.horn(t + 1.2, 87);
-        break;
-      case "hum":
-        [5 / 4, 3 / 2, 5 / 4, 1, 9 / 8].forEach((k, i) => this.tone(r * 2 * k, t + i * 0.46, 0.5, "sine", 0.04, 0.06, 6));
-        break;
-      case "telegraph":
-        for (const at of [0, 0.12, 0.24, 0.5, 0.62, 0.9, 1.02, 1.14, 1.42]) this.burst(t + at, 0.014, "bandpass", 2400, 4, 0.18);
-        break;
-      case "bell":
-        [[1, 4, 0.08], [2, 3, 0.04], [2.76, 2.4, 0.03], [4.07, 1.6, 0.015], [5.4, 1.2, 0.01]].forEach(([k, d, g]) =>
-          this.tone(r * 2 * k, t, d, "sine", g, 0.004),
-        );
-        break;
-      case "whispers":
-        for (let i = 0; i < 3; i++) this.whisper(t + i * 0.75, i % 2 ? [2400, 900] : [900, 2400]);
-        break;
-      case "clock":
-        for (let i = 0; i < 6; i++) this.burst(t + i * 0.5, 0.02, "bandpass", i % 2 ? 1300 : 1900, 6, 0.14);
-        break;
-      case "gramophone":
-        for (let i = 0; i < 40; i++) this.burst(t + Math.random() * 2.6, 0.004, "highpass", 3000, 0.7, 0.05);
-        [1, 5 / 4, 3 / 2, 4 / 3].forEach((k, i) => this.tone(r * 2 * k, t + 0.3 + i * 0.55, 0.6, "triangle", 0.035, 0.03, 4));
-        break;
       case "fire":
         for (let i = 0; i < 30; i++) {
           this.burst(t + Math.random() * 2.6, 0.01 + Math.random() * 0.02, "bandpass", 1500 + Math.random() * 2500, 1.5, 0.05 + Math.random() * 0.07);
         }
         this.wash(t, 2.8, 250, 0.08);
         break;
-      case "pages":
-        for (const at of [0, 0.7]) this.burst(t + at, 0.35, "bandpass", 3500, 0.8, 0.12);
-        break;
-      case "creak":
-        for (const at of [0, 1.1]) this.creak(t + at);
-        break;
-      case "chiptune":
-        [1, 5 / 4, 3 / 2, 2, 3 / 2, 5 / 4, 1, 2].forEach((k, i) => this.tone(r * 2 * k, t + i * 0.09, 0.08, "square", 0.03, 0.002));
+      case "gramophone":
+        for (let i = 0; i < 40; i++) this.burst(t + Math.random() * 2.6, 0.004, "highpass", 3000, 0.7, 0.05);
+        [1, 5 / 4, 3 / 2, 4 / 3].forEach((k, i) => this.tone(r * 2 * k, t + 0.3 + i * 0.55, 0.6, "triangle", 0.035, 0.03, 4));
         break;
     }
   }
@@ -307,45 +305,5 @@ export class SoundScape {
     src.connect(this.filter("lowpass", cutoff, 0.6)).connect(g).connect(this.master);
     src.start(t, Math.random());
     src.stop(t + dur + 0.05);
-  }
-
-  private horn(t: number, freq: number): void {
-    const ctx = this.ctx!;
-    const low = this.filter("lowpass", 380, 1);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.07, t + 0.4);
-    g.gain.setValueAtTime(0.07, t + 1.6);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.5);
-    low.connect(g).connect(this.master);
-    for (const detune of [0, 0.6]) {
-      const o = ctx.createOscillator();
-      o.type = "sawtooth";
-      o.frequency.value = freq + detune;
-      o.connect(low);
-      o.start(t);
-      o.stop(t + 2.6);
-    }
-  }
-
-  private whisper(t: number, [from, to]: number[]): void {
-    const src = this.noiseSource();
-    const band = this.filter("bandpass", from, 9);
-    band.frequency.setValueAtTime(from, t);
-    band.frequency.exponentialRampToValueAtTime(to, t + 1.4);
-    src.connect(band).connect(this.envelope(t, 0.3, 0.09, 1.2)).connect(this.master);
-    src.start(t, Math.random());
-    src.stop(t + 1.6);
-  }
-
-  private creak(t: number): void {
-    const ctx = this.ctx!;
-    const o = ctx.createOscillator();
-    o.type = "sawtooth";
-    o.frequency.setValueAtTime(70, t);
-    o.frequency.linearRampToValueAtTime(115, t + 0.9);
-    o.connect(this.filter("bandpass", 700, 4)).connect(this.envelope(t, 0.08, 0.06, 0.85)).connect(this.master);
-    o.start(t);
-    o.stop(t + 1);
   }
 }

@@ -16,7 +16,7 @@ function env(): Env {
     BOARD_WORD: process.env.BOARD_WORD ?? "",
     COOKIE_SECRET: process.env.COOKIE_SECRET ?? "",
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
-    SPIRIT_MODEL: process.env.SPIRIT_MODEL || "claude-haiku-5-5",
+    SPIRIT_MODEL: process.env.SPIRIT_MODEL || undefined,
     MOCK_SPIRIT: process.env.MOCK_SPIRIT === "1" ? "1" : "0",
     ASK_LIMITER: askLimiter,
     ENTER_LIMITER: enterLimiter,

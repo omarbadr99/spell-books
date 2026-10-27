@@ -1,6 +1,7 @@
-// A whole séance in the browser with canned spirits: the lock, lighting the
-// candle with a hello, asking from the center, rubbing out a letter and goodbye.
-// Runs the spirits 5× faster than life.
+// A whole séance in the browser with canned spirits: the lock, words that are
+// not a greeting (nothing comes), lighting the candle with a hello, asking from
+// the center, rubbing out a letter and goodbye. Runs the spirits 5× faster
+// than life.
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -82,9 +83,16 @@ async function flickHome(page: Page) {
   await page.mouse.up();
 }
 
+/** A touch hurries the opening along; then wait for the board to settle where it belongs. */
+async function skipOpening(page: Page) {
+  await page.mouse.click(5, 5);
+  await page.waitForFunction(() => !window.__board.forming(), null, { timeout: 30_000 });
+}
+
 test("a séance from the lock to goodbye", async ({ page }, testInfo) => {
   await page.goto(`/?speed=${SPEED}`);
   await phaseBecomes(page, "locked");
+  await skipOpening(page);
 
   // A wrong word, sent by bringing the planchette back to the center: it jerks to NO.
   await spell(page, "A", "B");
@@ -101,7 +109,14 @@ test("a séance from the lock to goodbye", async ({ page }, testInfo) => {
   await expect(page.locator("#room.candles-lit")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("dark.png") });
 
-  // Saying hello lights the candle and calls a spirit, which spells its opener above the board.
+  // Words that aren't a greeting fade away, and nothing comes.
+  await spell(page, "A", "B", "CENTER");
+  await expect(page.locator("#hint")).toContainText("only come when greeted");
+  expect(await page.evaluate(() => window.__board.phase())).toBe("dormant");
+  expect(await ink(page)).toBe("");
+  await expect(page.locator("#room.candles-lit")).toHaveCount(0);
+
+  // Saying hello lights the candle and calls a spirit, which greets the sitters back above the board.
   from = await mark(page);
   await spell(page, "H", "I", "CENTER");
   await phaseBecomes(page, "summoning", "listening");
@@ -135,11 +150,11 @@ test("a séance from the lock to goodbye", async ({ page }, testInfo) => {
   await page.locator("#voice").click();
   expect(await ink(page)).toBe("");
 
-  // Saying goodbye: the spirit spells its farewell, rests on GOODBYE, the candle goes out.
+  // Saying goodbye: the spirit simply goes, without a word, and the candle goes out.
   from = await mark(page);
   await spell(page, "GOODBYE");
-  await passesThrough(page, from, "answering", "ending", "ended");
-  expect(await lastTarget(page)).toBe("GOODBYE");
+  await passesThrough(page, from, "ending", "ended");
+  expect(await page.evaluate((start) => window.__board.since(start), from)).not.toContain("answering");
   await expect(page.locator("#room.candles-lit")).toHaveCount(0);
   await expect(page.locator("#endcard")).toBeVisible();
   await expect(page.locator(".endcard-stats")).toContainText("2 questions asked");

@@ -11,8 +11,9 @@
   "observability": { "enabled": true },
   // Secrets (set with `wrangler secret put`, or in .dev.vars locally):
   //   ANTHROPIC_API_KEY, BOARD_WORD, COOKIE_SECRET
+  // Each spirit answers on its own model. To put them all on one, add a
+  // "SPIRIT_MODEL" var here with that model's id (see the README).
   "vars": {
-    "SPIRIT_MODEL": "claude-haiku-5-5",
     "MOCK_SPIRIT": "0"
   },
   "ratelimits": [
@@ -23,7 +24,6 @@
     // Used by the Playwright tests: canned spirits, no API key, relaxed limits.
     "e2e": {
       "vars": {
-        "SPIRIT_MODEL": "claude-haiku-5-5",
         "MOCK_SPIRIT": "1"
       },
       "ratelimits": [

@@ -38,6 +38,19 @@ describe("sampleMask", () => {
     expect(dust.some((p) => !inBlock(Math.floor(p.x), Math.floor(p.y)))).toBe(true);
   });
 
+  it("knows which way each point's edge faces", () => {
+    const body = sampleMask(block(), 2000, seeded(7)).filter((p) => p.kind === KIND.body);
+    const left = body.filter((p) => p.x < 16.5 && p.y > 14 && p.y < 26);
+    const right = body.filter((p) => p.x > 43.5 && p.y > 14 && p.y < 26);
+    const top = body.filter((p) => p.y < 11.5 && p.x > 19 && p.x < 41);
+    expect(left.length && right.length && top.length).toBeTruthy();
+    for (const p of left) expect(p.nx, `${p.x},${p.y}`).toBeLessThan(-0.5);
+    for (const p of right) expect(p.nx).toBeGreaterThan(0.5);
+    for (const p of top) expect(p.ny).toBeLessThan(-0.5);
+    // Deep inside the block there is no edge to face.
+    for (const p of body.filter((q) => q.x > 22 && q.x < 38 && q.y > 16 && q.y < 24)) expect(Math.hypot(p.nx, p.ny)).toBe(0);
+  });
+
   it("is the same every time for the same seed", () => {
     expect(sampleMask(block(), 300, seeded(5))).toEqual(sampleMask(block(), 300, seeded(5)));
   });

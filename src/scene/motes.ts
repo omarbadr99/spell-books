@@ -1,9 +1,11 @@
 // Loose motes moved on the CPU: smoke curling up when the candle goes out, and
-// embers rising from the flame while it burns. Only a few hundred at most.
+// embers rising from the flame while it burns, both carried off by the wind.
+// Only a few hundred at most.
 
 import { AdditiveBlending, BufferAttribute, BufferGeometry, NormalBlending, Points, ShaderMaterial } from "three";
 import { MOTE_VERTEX, POINT_FRAGMENT } from "./shaders";
 import { shared } from "./uniforms";
+import type { Air, Wind } from "./wind";
 
 export interface Mote {
   x: number;
@@ -18,6 +20,10 @@ export interface Mote {
   grow?: number;
   color: [number, number, number];
   alpha: number;
+  /** How quickly it takes up the wind's speed, in seconds: heavier things are slower. */
+  drag?: number;
+  /** How hard heat lifts it as it leaves the flame, in board units a second. */
+  lift?: number;
 }
 
 export class Motes {
@@ -26,6 +32,7 @@ export class Motes {
   private readonly position: Float32Array;
   private readonly color: Float32Array;
   private readonly size: Float32Array;
+  private readonly air: Air = { x: 0, y: 0, gust: 0 };
 
   constructor(
     private readonly capacity: number,
@@ -59,9 +66,10 @@ export class Motes {
     this.live.push({ ...mote, age: mote.age ?? 0 });
   }
 
-  /** Moves every mote on, pushed sideways by `wind` (units per second squared). */
-  update(dt: number, wind: number): void {
+  /** Moves every mote on, as the wind and its own heat carry it. */
+  update(dt: number, wind: Wind): void {
     let n = 0;
+    const { air } = this;
     for (let i = this.live.length - 1; i >= 0; i--) {
       const m = this.live[i];
       m.age += dt;
@@ -70,7 +78,10 @@ export class Motes {
         continue;
       }
       if (m.age < 0) continue;
-      m.vx += wind * dt;
+      wind.at(m.x, m.y, air);
+      const k = 1 - Math.exp(-dt / (m.drag ?? 0.6));
+      m.vx += (air.x - m.vx) * k;
+      m.vy += (air.y + (m.lift ?? 0) * Math.exp(-m.age / 1.2) - m.vy) * k;
       m.x += m.vx * dt;
       m.y += m.vy * dt;
       const u = m.age / m.life;

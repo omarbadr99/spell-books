@@ -217,45 +217,6 @@ export class Possessor {
     return this.glide(this.view.layout.rest, { speed: this.style.speed * 0.6, overshoot: 0 });
   }
 
-  /** Circles slowly around the middle of the board until the returned stop() is called. */
-  circle(): () => Promise<void> {
-    let stopped = false;
-    const done = (async () => {
-      const { rest, width, height } = this.view.layout;
-      await this.glide(rest, { speed: Math.max(500, this.style.speed * 0.7), overshoot: 0, hesitation: 0 });
-      if (stopped) return;
-      const a = width * 0.055;
-      const b = height * 0.045;
-      const start = performance.now();
-      let last = start;
-      let angle = 0;
-      await new Promise<void>((resolve) => {
-        this.ticker.add((now) => {
-          if (stopped) {
-            resolve();
-            return false;
-          }
-          const t = ((now - start) * this.speedFactor) / 1000;
-          const dt = (Math.min(100, now - last) * this.speedFactor) / 1000;
-          last = now;
-          // Spirals out into the circling, and the circles breathe a little.
-          const ramp = easeInOutSine(Math.min(1, t / 1.6));
-          angle += dt * ((2 * Math.PI) / 3.4) * ramp;
-          const r = ramp * (0.85 + 0.15 * Math.sin(t * 0.8));
-          this.aim = { x: rest.x + a * r * Math.sin(angle), y: rest.y - b * r * Math.cos(angle) };
-          this.stir = 0.6 * ramp;
-          this.show(now);
-          return true;
-        });
-      });
-      this.stir = 0;
-    })();
-    return () => {
-      stopped = true;
-      return done;
-    };
-  }
-
   /** The planchette stirs as a spirit takes hold of it: a small slide one way, then back. */
   async jolt(): Promise<void> {
     this.sync();

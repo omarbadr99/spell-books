@@ -1,11 +1,12 @@
 // The board's particles: every letter, number and word, and the candle, each
 // sampled from its shape into a few hundred glowing points. Each point also
-// knows where it starts from, out in the dark, so the board can form.
+// knows where it starts from, out in the dark, so the board can form, and which
+// way its stroke's edge faces, so the candle can light it from the side.
 
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial, Vector3 } from "three";
 import type { BoardLayout } from "../board/layout";
 import { candleMask, textMask } from "./masks";
-import { coverage, KIND, sampleMask, seeded } from "./sampling";
+import { coverage, KIND, sampleMask, seeded, type Sample } from "./sampling";
 import { BOARD_VERTEX, POINT_FRAGMENT } from "./shaders";
 import { shared } from "./uniforms";
 
@@ -48,15 +49,19 @@ export function buildBoard(layout: BoardLayout, density: number): BoardParticles
   const seed: number[] = [];
   const glyph: number[] = [];
   const kind: number[] = [];
+  const normal: number[] = [];
   const slots = new Map<string, number>();
 
   const place = (
-    points: { x: number; y: number; kind: number }[],
+    points: Sample[],
     toBoard: (x: number, y: number) => [number, number],
+    turn: number,
     slot: number,
     from: [number, number, number],
     lateness: number,
   ) => {
+    const cos = Math.cos(turn);
+    const sin = Math.sin(turn);
     for (const pt of points) {
       const [x, y] = toBoard(pt.x, pt.y);
       const z = pt.kind === KIND.dust ? (rand() - 0.5) * 60 : (rand() - 0.5) * 6;
@@ -66,6 +71,8 @@ export function buildBoard(layout: BoardLayout, density: number): BoardParticles
       seed.push(0.65 * lateness + 0.35 * rand(), rand(), rand(), rand());
       glyph.push(slot);
       kind.push(pt.kind);
+      // Turned with its glyph, and into world space, where y points up.
+      normal.push(pt.nx * cos - pt.ny * sin, -(pt.nx * sin + pt.ny * cos));
     }
   };
 
@@ -79,8 +86,10 @@ export function buildBoard(layout: BoardLayout, density: number): BoardParticles
       const turn = (el.rotate * Math.PI) / 180;
       const cos = Math.cos(turn);
       const sin = Math.sin(turn);
-      // Each glyph comes from somewhere off in the dark, some from far behind, some from close by.
-      const from: [number, number, number] = [(rand() - 0.5) * 900, (rand() - 0.5) * 600, -1600 + rand() * 2100];
+      // Each glyph is carried in on the wind from somewhere upwind in the dark, far behind or close by,
+      // so the board fills in from the left as the gust passes over it.
+      const from: [number, number, number] = [-500 - rand() * 700, (rand() - 0.5) * 500, -1300 + rand() * 1700];
+      const lateness = 0.08 + 0.62 * (el.x / layout.width) + 0.1 * rand();
       place(
         sampleMask(mask, count, rand, OVERSAMPLE),
         (mx, my) => {
@@ -88,21 +97,23 @@ export function buildBoard(layout: BoardLayout, density: number): BoardParticles
           const ly = (my - mask.cy) / OVERSAMPLE;
           return [el.x + lx * cos - ly * sin, el.y + lx * sin + ly * cos];
         },
+        turn,
         slot,
         from,
-        rand(),
+        lateness,
       );
     });
 
-  // The candle rises out of the dark below.
+  // The candle rises out of the dark below, last of all.
   const candle = candleGeometry(layout);
   const mask = candleMask(candle.width * OVERSAMPLE, candle.h * OVERSAMPLE, rand);
   place(
     sampleMask(mask, Math.round((coverage(mask) / OVERSAMPLE ** 2) * density * 0.75), rand, OVERSAMPLE),
     (mx, my) => [candle.x + (mx - mask.cx) / OVERSAMPLE, candle.base + (my - mask.cy) / OVERSAMPLE],
+    0,
     -1,
     [0, -520, -500],
-    0.15,
+    1,
   );
 
   const geometry = new BufferGeometry();
@@ -111,11 +122,11 @@ export function buildBoard(layout: BoardLayout, density: number): BoardParticles
   geometry.setAttribute("aSeed", new BufferAttribute(new Float32Array(seed), 4));
   geometry.setAttribute("aGlyph", new BufferAttribute(new Float32Array(glyph), 1));
   geometry.setAttribute("aKind", new BufferAttribute(new Float32Array(kind), 1));
+  geometry.setAttribute("aNormal", new BufferAttribute(new Float32Array(normal), 2));
   const material = new ShaderMaterial({
     uniforms: {
       ...shared,
       uForm: { value: 0 },
-      uBreeze: { value: 0 },
       uGlow: { value: new Float32Array(MAX_GLYPHS) },
       uHole: { value: new Vector3() },
     },

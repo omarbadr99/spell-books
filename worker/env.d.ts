@@ -4,4 +4,6 @@ interface Env {
   BOARD_WORD: string;
   COOKIE_SECRET: string;
   ANTHROPIC_API_KEY: string;
+  /** Optional: puts every spirit on this one model instead of its namesake. */
+  SPIRIT_MODEL?: string;
 }

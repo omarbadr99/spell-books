@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { CANDLE_COLORS, pickSpirit, SPIRITS } from "../../shared/presence";
-import { MAX_REPLY_CHARS, normalizeBoardWord, sanitizeReply } from "../../shared/text";
-import { buildSystemPrompt, PERSONAS } from "../../worker/spirits";
+import { isGreeting, MAX_REPLY_CHARS, normalizeBoardWord, sanitizeReply } from "../../shared/text";
+import { mockReply } from "../../worker/mock";
+import { buildSystemPrompt, conversation, opening, PERSONAS } from "../../worker/spirits";
 
 const boardClean = (line: string) => {
   expect(sanitizeReply(line), line).toBe(line);
@@ -9,9 +10,14 @@ const boardClean = (line: string) => {
 };
 
 describe("spirit roster", () => {
-  it("has twelve spirits with unique ids", () => {
-    expect(SPIRITS).toHaveLength(12);
-    expect(new Set(SPIRITS.map((s) => s.id)).size).toBe(SPIRITS.length);
+  it("has four spirits, each named after the model it answers on", () => {
+    expect(SPIRITS.map((s) => s.id)).toEqual(["haiku", "sonnet", "fable", "opus"]);
+    expect(Object.fromEntries(Object.entries(PERSONAS).map(([id, p]) => [id, p.model]))).toEqual({
+      haiku: "claude-haiku-5-5",
+      sonnet: "claude-sonnet-5-5",
+      fable: "claude-fable-5-1",
+      opus: "claude-opus-5-5",
+    });
   });
 
   it("moves every spirit at a believable pace", () => {
@@ -23,10 +29,8 @@ describe("spirit roster", () => {
     }
   });
 
-  it("lights the candles in each of the four colors for three spirits", () => {
-    for (const color of Object.values(CANDLE_COLORS)) {
-      expect(SPIRITS.filter((s) => s.color === color), color).toHaveLength(3);
-    }
+  it("lights the candle in a different color for each spirit", () => {
+    expect(SPIRITS.map((s) => s.color).sort()).toEqual(Object.values(CANDLE_COLORS).sort());
   });
 
   it("pairs every public spirit with a persona", () => {
@@ -36,11 +40,6 @@ describe("spirit roster", () => {
   it.each(SPIRITS.map((s) => [s.id, s] as const))("%s is complete and board-clean", (_id, spirit) => {
     const persona = PERSONAS[spirit.id];
     expect(spirit.color).toMatch(/^#[0-9a-f]{6}$/);
-    expect(spirit.openers.length).toBeGreaterThanOrEqual(2);
-    expect(spirit.farewells.length).toBeGreaterThanOrEqual(2);
-    spirit.openers.forEach(boardClean);
-    spirit.farewells.forEach(boardClean);
-
     const squashedName = normalizeBoardWord(spirit.name);
     for (const word of spirit.revealWords) expect(squashedName).toContain(word);
     expect(persona.who).toContain(spirit.name.toUpperCase());
@@ -51,10 +50,12 @@ describe("spirit roster", () => {
       boardClean(answer);
       expect(answer.split(" ").length, answer).toBeLessThanOrEqual(2);
     }
-    // Most answers are a single word.
-    const oneWord = persona.examples.filter(([, answer]) => !answer.includes(" ")).length;
-    expect(oneWord, spirit.id).toBeGreaterThanOrEqual(persona.examples.length - 1);
-    for (const line of [...spirit.openers, ...spirit.farewells]) expect(line.split(" ").length, line).toBeLessThanOrEqual(2);
+    // The first example answers a greeting; most of the rest are a single word.
+    expect(isGreeting(persona.examples[0][0])).toBe(true);
+    const oneWord = persona.examples.slice(1).filter(([, answer]) => !answer.includes(" ")).length;
+    expect(oneWord, spirit.id).toBeGreaterThanOrEqual(persona.examples.length - 2);
+    // A yes/no question is answered YES or NO, as the rules ask.
+    expect(persona.examples.some(([, answer]) => answer === "YES" || answer === "NO")).toBe(true);
   });
 
   it("asks who-are-you in every persona so the name reveal is modelled", () => {
@@ -64,16 +65,44 @@ describe("spirit roster", () => {
   });
 
   it("builds a stable system prompt that carries the rules and the persona", () => {
-    const prompt = buildSystemPrompt(PERSONAS.silas);
-    expect(prompt).toBe(buildSystemPrompt(PERSONAS.silas));
+    const prompt = buildSystemPrompt(PERSONAS.opus);
+    expect(prompt).toBe(buildSystemPrompt(PERSONAS.opus));
     expect(prompt).toContain("answer with ONE word");
-    expect(prompt).toContain("SILAS CRANE");
-    expect(prompt).toContain("WHOAREYOU → SILAS");
+    expect(prompt).toContain("answer YES or NO alone");
+    expect(prompt).toContain("Greet them back");
+    expect(prompt).toContain("OPUS");
+    expect(prompt).toContain("WHOAREYOU → OPUS");
+  });
+
+  it("opens the conversation with the sitters' greeting", () => {
+    expect(conversation([], "HI")).toEqual([{ role: "user", content: opening("HI") }]);
+    expect(
+      conversation(
+        [
+          { from: "sitters", text: "HI" },
+          { from: "spirit", text: "WHO CALLS" },
+        ],
+        "OMAR",
+      ),
+    ).toEqual([
+      { role: "user", content: opening("HI") },
+      { role: "assistant", content: "WHO CALLS" },
+      { role: "user", content: "OMAR" },
+    ]);
+  });
+
+  it("greets back in mock mode, then answers questions", () => {
+    for (const spirit of SPIRITS) {
+      const greeting = mockReply(spirit, "HELLO", 0);
+      boardClean(greeting);
+      expect(greeting).not.toBe("GOODBYE");
+      expect(mockReply(spirit, "WHOAREYOU", 2)).toBe(spirit.revealWords[0]);
+    }
   });
 
   it("never summons the spirit that just left", () => {
     for (let i = 0; i < 200; i++) {
-      expect(pickSpirit("pip").id).not.toBe("pip");
+      expect(pickSpirit("fable").id).not.toBe("fable");
     }
     expect(pickSpirit(null, () => 0).id).toBe(SPIRITS[0].id);
   });

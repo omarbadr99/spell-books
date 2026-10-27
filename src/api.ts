@@ -8,11 +8,9 @@ export type AskResult =
   | { reply: string; /** Shown as a hint, e.g. when replies come from a fallback. */ note?: string }
   | { error: "slow" | "silent" | "locked" | "unprepared" };
 
+/** A question for a spirit. The first of a séance is the sitters' greeting, with no history. */
 export interface AskBody {
   spiritId: string;
-  openerIndex: number;
-  /** What the sitters spelled to light the candles. */
-  greeting?: string;
   history: Turn[];
   question: string;
 }

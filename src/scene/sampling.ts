@@ -26,6 +26,12 @@ export interface Sample {
   x: number;
   y: number;
   kind: number;
+  /**
+   * Which way the stroke's edge faces here (x right, y down), as long as the
+   * point is near an edge: 0 in the middle of a stroke, up to 1 on its rim.
+   */
+  nx: number;
+  ny: number;
 }
 
 export interface SampleMix {
@@ -99,6 +105,20 @@ export function sampleMask(mask: Mask, count: number, rand: () => number, unit =
     return inside[lo];
   };
   const solid = (x: number, y: number) => at(Math.floor(x), Math.floor(y)) >= SOLID;
+  // The way out of the shape: against the rise of its alpha, measured a few pixels either side.
+  const facing = (x: number, y: number, kind: number): Sample => {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    let gx = 0;
+    let gy = 0;
+    for (let d = -3; d <= 3; d++) {
+      gx += at(ix + 3, iy + d) - at(ix - 3, iy + d);
+      gy += at(ix + d, iy + 3) - at(ix + d, iy - 3);
+    }
+    const len = Math.hypot(gx, gy);
+    const rim = Math.min(1, len / (255 * 7 * 0.5));
+    return len < 1 ? { x, y, kind, nx: 0, ny: 0 } : { x, y, kind, nx: (-gx / len) * rim, ny: (-gy / len) * rim };
+  };
 
   const threads = Math.round(count * mix.thread);
   const dust = Math.round(count * mix.dust);
@@ -108,7 +128,7 @@ export function sampleMask(mask: Mask, count: number, rand: () => number, unit =
 
   for (let i = 0; i < body; i++) {
     const p = pick();
-    out.push({ x: (p % w) + rand(), y: Math.floor(p / w) + rand(), kind: KIND.body });
+    out.push(facing((p % w) + rand(), Math.floor(p / w) + rand(), KIND.body));
   }
 
   // Threads: short walks that wander through the strokes and turn back at their edges.
@@ -128,7 +148,7 @@ export function sampleMask(mask: Mask, count: number, rand: () => number, unit =
       }
       x = nx;
       y = ny;
-      out.push({ x, y, kind: KIND.thread });
+      out.push(facing(x, y, KIND.thread));
       made++;
     }
   }
@@ -138,12 +158,12 @@ export function sampleMask(mask: Mask, count: number, rand: () => number, unit =
     const p = pick();
     const r = (1.5 + Math.abs(gauss(rand)) * 6) * unit;
     const a = rand() * Math.PI * 2;
-    out.push({ x: (p % w) + Math.cos(a) * r, y: Math.floor(p / w) + Math.sin(a) * r, kind: KIND.dust });
+    out.push({ x: (p % w) + Math.cos(a) * r, y: Math.floor(p / w) + Math.sin(a) * r, kind: KIND.dust, nx: 0, ny: 0 });
   }
 
   for (let i = 0; i < haze; i++) {
     const p = inside[Math.floor(rand() * inside.length)];
-    out.push({ x: p % w, y: Math.floor(p / w), kind: KIND.haze });
+    out.push({ x: p % w, y: Math.floor(p / w), kind: KIND.haze, nx: 0, ny: 0 });
   }
   return out;
 }

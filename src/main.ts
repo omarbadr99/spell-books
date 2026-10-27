@@ -92,6 +92,8 @@ function applyLayout(kind: LayoutKind, first = false): void {
 
 // Fingers on the planchette, which may hang a little over the board's edge.
 addEventListener("pointerdown", (e) => {
+  // Any touch hurries the opening along.
+  view.hurry();
   if (!e.isPrimary || (e.target as Element).closest("#endcard, #mute, #voice")) return;
   const p = view.toBoard(e.clientX, e.clientY);
   if (!planchette.canGrab(p)) return;
@@ -125,6 +127,7 @@ for (const type of ["pointerdown", "touchend", "click"]) document.addEventListen
 ticker.add((now, dt) => {
   planchette.tick(dt);
   sound.scrape(planchette.speed);
+  sound.wind(view.windLevel);
   if (planchette.held && !planchette.driven && seance.sittersHaveIt) {
     const state = dwell.update(now, planchette.pos.x, planchette.pos.y, planchette.settled(now));
     view.hover(state.hoverId);
@@ -198,16 +201,17 @@ async function start(): Promise<void> {
   requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("preload")));
   ticker.start();
 
-  // First the planchette, alone in the dark; then the board gathers around it.
-  view.showPlanchette();
-  window.setTimeout(() => view.form(calm ? 0.01 : 4.2), calm ? 0 : 700);
+  // The opening: the dark, the planchette alone in it, a title out of dust, and the board
+  // carried in on a gust. The page's words wait until it is over.
+  roomEl.classList.add("intro");
+  void view.open(calm).then(() => roomEl.classList.remove("intro"));
   if (!fontReady) {
     // If the lettering turns up late, sample it again and let the board re-form.
     const late = () => {
       if (!document.fonts.check(BOARD_FONT)) return;
       document.fonts.removeEventListener("loadingdone", late);
       view.resample();
-      view.form(calm ? 0.01 : 1.4);
+      if (!view.forming) view.form(calm ? 0.01 : 1.4);
     };
     document.fonts.addEventListener("loadingdone", late);
   }

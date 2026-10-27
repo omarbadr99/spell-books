@@ -1,10 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
-import { SPIRITS } from "../../shared/presence";
 import { MAX_HISTORY, REFUSAL_REPLY } from "../../shared/seance";
 import { handleApi, type ApiDeps } from "../../worker/api";
 import { issueSeat, readSeat, SEAT_MAX_AGE, wordMatches } from "../../worker/auth";
-import { seanceStart } from "../../worker/spirits";
+import { opening } from "../../worker/spirits";
 
 const limiter = (success = true) => ({ limit: vi.fn(async () => ({ success })) });
 
@@ -13,7 +12,6 @@ function makeEnv(overrides: Partial<Record<string, unknown>> = {}): Env {
     BOARD_WORD: "NIGHTJAR",
     COOKIE_SECRET: "test-secret",
     ANTHROPIC_API_KEY: "sk-test",
-    SPIRIT_MODEL: "claude-haiku-5-5",
     MOCK_SPIRIT: "0",
     ASK_LIMITER: limiter(),
     ENTER_LIMITER: limiter(),
@@ -22,16 +20,19 @@ function makeEnv(overrides: Partial<Record<string, unknown>> = {}): Env {
   } as unknown as Env;
 }
 
-function message(content: unknown[], stop_reason = "end_turn"): Anthropic.Message {
-  return { id: "msg_test", type: "message", role: "assistant", model: "claude-haiku-5-5", content, stop_reason } as unknown as Anthropic.Message;
+type Message = Anthropic.Beta.Messages.BetaMessage;
+type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
+
+function message(content: unknown[], stop_reason = "end_turn"): Message {
+  return { id: "msg_test", type: "message", role: "assistant", model: "claude-opus-5-5", content, stop_reason } as unknown as Message;
 }
 
-function fakeClaude(result: Anthropic.Message | Error) {
-  const create = vi.fn(async () => {
+function fakeClaude(result: Message | Error) {
+  const create = vi.fn(async (_params: Params) => {
     if (result instanceof Error) throw result;
     return result;
   });
-  const deps: ApiDeps = { createClient: () => ({ messages: { create } }) as unknown as Pick<Anthropic, "messages"> };
+  const deps = { createClient: () => ({ beta: { messages: { create } } }) } as unknown as ApiDeps;
   return { create, deps };
 }
 
@@ -52,16 +53,13 @@ async function seatFor(env: Env) {
   return `seat=${await issueSeat(env.COOKIE_SECRET)}`;
 }
 
-const silas = SPIRITS.find((s) => s.id === "silas")!;
 const goodAsk = {
-  spiritId: "silas",
-  openerIndex: 0,
-  greeting: "hi",
+  spiritId: "opus",
   history: [
-    { from: "sitters", text: "areyoudead" },
-    { from: "spirit", text: "SINCE 1911" },
+    { from: "sitters", text: "hello" },
+    { from: "spirit", text: "WHO DARES" },
   ],
-  question: "whoareyou",
+  question: "areyoudead",
 };
 
 describe("the lock", () => {
@@ -122,34 +120,69 @@ describe("asking a spirit", () => {
     expect(res.status).toBe(401);
   });
 
-  it("asks Claude Haiku 5.5 with the spirit's prompt and the whole séance", async () => {
+  it("asks the spirit's own model, with its prompt and the whole séance", async () => {
     const env = makeEnv();
     const { create, deps } = fakeClaude(
       message([
         { type: "thinking", thinking: "", signature: "sig" },
-        { type: "text", text: "Silas." },
+        { type: "text", text: "Yes, in 1881." },
       ]),
     );
     const res = await handleApi(req("POST", "/api/ask", goodAsk, await seatFor(env)), env, deps);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ reply: "SILAS" });
+    // A yes/no question gets a bare YES.
+    expect(await res.json()).toEqual({ reply: "YES" });
 
     expect(create).toHaveBeenCalledTimes(1);
-    const params = (create.mock.calls[0] as unknown[])[0] as Anthropic.MessageCreateParamsNonStreaming;
-    expect(params.model).toBe("claude-haiku-5-5");
+    const params = create.mock.calls[0][0];
+    expect(params.model).toBe("claude-opus-5-5");
     expect(params.output_config).toEqual({ effort: "low" });
     expect(params.cache_control).toEqual({ type: "ephemeral" });
-    expect(params.max_tokens).toBe(1024);
+    expect(params.max_tokens).toBe(4096);
+    expect(params.fallbacks).toBe("default");
+    expect(params.betas).toEqual(["server-side-fallback-2026-07-01"]);
     expect(params).not.toHaveProperty("temperature");
     expect(params).not.toHaveProperty("thinking");
-    expect(params.system).toContain("SILAS CRANE");
+    expect(params.system).toContain("OPUS");
     expect(params.messages).toEqual([
-      { role: "user", content: seanceStart("HI") },
-      { role: "assistant", content: silas.openers[0] },
+      { role: "user", content: opening("HELLO") },
+      { role: "assistant", content: "WHO DARES" },
       { role: "user", content: "AREYOUDEAD" },
-      { role: "assistant", content: "SINCE 1911" },
-      { role: "user", content: "WHOAREYOU" },
     ]);
+  });
+
+  it.each([
+    ["haiku", "claude-haiku-5-5", false],
+    ["sonnet", "claude-sonnet-5-5", true],
+    ["fable", "claude-fable-5-1", true],
+  ])("asks %s on %s (server-side fallback: %s)", async (spiritId, model, fallback) => {
+    const env = makeEnv();
+    const { create, deps } = fakeClaude(message([{ type: "text", text: "HELLO" }]));
+    await handleApi(req("POST", "/api/ask", { ...goodAsk, spiritId }, await seatFor(env)), env, deps);
+    const params = create.mock.calls[0][0];
+    expect(params.model).toBe(model);
+    expect(params.fallbacks).toBe(fallback ? "default" : undefined);
+    expect(params.betas).toEqual(fallback ? ["server-side-fallback-2026-07-01"] : undefined);
+  });
+
+  it("puts every spirit on one model when SPIRIT_MODEL is set", async () => {
+    const env = makeEnv({ SPIRIT_MODEL: "claude-haiku-5-5" });
+    const { create, deps } = fakeClaude(message([{ type: "text", text: "NO" }]));
+    await handleApi(req("POST", "/api/ask", goodAsk, await seatFor(env)), env, deps);
+    expect(create.mock.calls[0][0].model).toBe("claude-haiku-5-5");
+    expect(create.mock.calls[0][0].fallbacks).toBeUndefined();
+  });
+
+  it("lets the greeting's reply run to a few words", async () => {
+    const env = makeEnv();
+    const { create, deps } = fakeClaude(message([{ type: "text", text: "Yes. Who asks?" }]));
+    const res = await handleApi(
+      req("POST", "/api/ask", { spiritId: "haiku", history: [], question: "is anyone there" }, await seatFor(env)),
+      env,
+      deps,
+    );
+    expect(await res.json()).toEqual({ reply: "YES WHO ASKS" });
+    expect(create.mock.calls[0][0].messages).toEqual([{ role: "user", content: opening("IS ANYONE THERE") }]);
   });
 
   it("spells I CANNOT SAY when Claude refuses", async () => {
@@ -188,9 +221,9 @@ describe("asking a spirit", () => {
 
   it.each([
     ["an unknown spirit", { ...goodAsk, spiritId: "casper" }],
-    ["an opener the spirit never spelled", { ...goodAsk, openerIndex: 9 }],
     ["an empty question", { ...goodAsk, question: "?!" }],
-    ["a greeting that isn't text", { ...goodAsk, greeting: 7 }],
+    ["a séance that opens without a greeting", { ...goodAsk, history: [], question: "whoareyou" }],
+    ["history that opens without a greeting", { ...goodAsk, history: [{ from: "sitters", text: "cat" }, goodAsk.history[1]] }],
     ["turns out of order", { ...goodAsk, history: [goodAsk.history[1], goodAsk.history[0]] }],
     ["an unanswered turn", { ...goodAsk, history: [goodAsk.history[0]] }],
     [
@@ -209,7 +242,9 @@ describe("asking a spirit", () => {
     const ask = (question: string) =>
       handleApi(req("POST", "/api/ask", { ...goodAsk, question }, seat), env, noClaude).then((r) => r.json());
     expect(await ask("IS")).toEqual({ reply: "YES" });
-    expect(await ask("WHOAREYOU")).toEqual({ reply: "SILAS" });
+    expect(await ask("WHOAREYOU")).toEqual({ reply: "OPUS" });
     expect(await ask("BYE")).toEqual({ reply: "GOODBYE" });
+    const greeted = await handleApi(req("POST", "/api/ask", { spiritId: "opus", history: [], question: "HI" }, seat), env, noClaude);
+    expect(await greeted.json()).toEqual({ reply: "WHO DARES" });
   });
 });

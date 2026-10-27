@@ -314,6 +314,25 @@ body {
   overflow: visible;
 }
 
+/* The shadow the candle throws from the planchette, across the board. */
+#planchette-shade {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+#planchette-shade svg {
+  position: absolute;
+  left: -140px;
+  top: -175px;
+  overflow: visible;
+}
+
 #planchette svg.warm {
   opacity: 0;
   will-change: opacity;
@@ -397,6 +416,19 @@ body {
 }
 
 #room:not(.phase-locked):not(.phase-dormant):not(.phase-booting) #disclaimer {
+  opacity: 0;
+}
+
+/* While the board opens out of the dark, the page's words wait. */
+#voice,
+#mute {
+  transition: opacity 1.2s ease;
+}
+
+#room.intro #voice,
+#room.intro #hint,
+#room.intro #mute,
+#room.intro #disclaimer {
   opacity: 0;
 }
 

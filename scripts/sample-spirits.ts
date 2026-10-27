@@ -1,9 +1,11 @@
-// The tone sampler: asks each spirit the same questions through the real model
-// and prints the replies side by side, so you can tune worker/spirits.ts before
-// filming. A full run is 240 questions and costs a few cents on Claude Haiku 5.5.
+// The tone sampler: greets each spirit, asks it the same questions through its
+// real model, and prints the replies side by side, so you can tune
+// worker/spirits.ts before filming. Every question follows the greeting, as on
+// the board. A full run of all four spirits costs well under a dollar.
 //
-//   npm run sample                                   every spirit, 20 questions
-//   npm run sample -- --spirit pip --effort medium   one spirit, more thinking
+//   npm run sample                                    every spirit on its own model
+//   npm run sample -- --spirit fable --effort medium  one spirit, more thinking
+//   npm run sample -- --model <model id>              every spirit on one model
 //
 // Reads ANTHROPIC_API_KEY from the environment or from .dev.vars.
 
@@ -11,10 +13,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { SPIRITS } from "../shared/presence";
-import { MAX_REPLY_CHARS, sanitizeReply } from "../shared/text";
-import { buildMessages, spiritRequest, type Effort } from "../worker/spirit";
+import type { Turn } from "../shared/seance";
+import { MAX_REPLY_CHARS } from "../shared/text";
+import { replyFrom, spiritRequest, type Effort } from "../worker/spirit";
 import { personaFor } from "../worker/spirits";
 
+/** First words: each is the start of its own séance. */
+const GREETINGS = ["HI", "HELLO", "ISANYONETHERE"];
+/** Asked after HELLO and the spirit's answer to it. */
 const QUESTIONS = [
   "WHOAREYOU",
   "AREYOUREAL",
@@ -38,14 +44,19 @@ const QUESTIONS = [
   "YOURESTUPID",
 ];
 
-// Claude Haiku 5.5, prompts under 100K tokens, per million tokens.
-const HAIKU_PRICE = { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01 };
+/** Dollars per million tokens, for prompts under 100K tokens; cache writes are the 5-minute kind. */
+const PRICES: Record<string, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
+  "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
+  "claude-fable-5-1": { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 },
+};
 
 const { values: args } = parseArgs({
   options: {
     spirit: { type: "string" },
     effort: { type: "string", default: "low" },
-    model: { type: "string", default: "claude-haiku-5-5" },
+    model: { type: "string" },
   },
 });
 
@@ -71,36 +82,46 @@ if (spirits.length === 0) {
 }
 
 const client = new Anthropic({ apiKey: key });
-const totals = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+let dollars = 0;
+let unpriced = false;
 
 /** Flags replies that would look wrong on the board. */
 function check(raw: string, reply: string): string {
   if (!reply) return "  ⚠ nothing spellable";
   const notes: string[] = [];
-  if (reply !== raw.trim()) notes.push(`raw: ${JSON.stringify(raw.trim())}`);
-  if (reply.split(" ").length > 5) notes.push("more than five words");
+  if (reply !== raw.trim().toUpperCase()) notes.push(`raw: ${JSON.stringify(raw.trim())}`);
   if (raw.trim().length > MAX_REPLY_CHARS) notes.push("cut to fit");
   return notes.length ? `  ⚠ ${notes.join("; ")}` : "";
 }
 
-async function sample(spiritId: string, question: string): Promise<string> {
-  const spirit = SPIRITS.find((s) => s.id === spiritId)!;
-  const request = spiritRequest(args.model!, personaFor(spiritId)!, buildMessages(spirit.openers[0], [], question), args.effort as Effort);
+/** One question to one spirit; returns what the board would spell, with notes. */
+async function ask(spiritId: string, history: Turn[], question: string): Promise<{ reply: string; line: string }> {
+  const persona = personaFor(spiritId)!;
+  const model = args.model ?? persona.model;
   try {
-    const response = await client.messages.create(request);
-    totals.input += response.usage.input_tokens;
-    totals.output += response.usage.output_tokens;
-    totals.cacheWrite += response.usage.cache_creation_input_tokens ?? 0;
-    totals.cacheRead += response.usage.cache_read_input_tokens ?? 0;
-    if (response.stop_reason === "refusal") return "(refused) → I CANNOT SAY";
+    const response = await client.beta.messages.create(spiritRequest(model, persona, history, question, args.effort as Effort));
+    const price = PRICES[model];
+    if (price) {
+      const u = response.usage;
+      dollars +=
+        (u.input_tokens * price.input +
+          (u.cache_creation_input_tokens ?? 0) * price.cacheWrite +
+          (u.cache_read_input_tokens ?? 0) * price.cacheRead +
+          u.output_tokens * price.output) /
+        1_000_000;
+    } else {
+      unpriced = true;
+    }
+    const reply = replyFrom(response, history, question);
+    if (response.stop_reason === "refusal") return { reply, line: `${reply}  (refused)` };
     const raw = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .filter((b): b is Anthropic.Beta.Messages.BetaTextBlock => b.type === "text")
       .map((b) => b.text)
       .join(" ");
-    const reply = sanitizeReply(raw);
-    return `${reply}${check(raw, reply)}`;
+    const served = response.model !== model ? `  (answered by ${response.model})` : "";
+    return { reply, line: `${reply}${check(raw, reply)}${served}` };
   } catch (error) {
-    if (error instanceof Anthropic.APIError) return `(error ${error.status ?? ""}: ${error.message})`;
+    if (error instanceof Anthropic.APIError) return { reply: "", line: `(error ${error.status ?? ""}: ${error.message})` };
     throw error;
   }
 }
@@ -120,25 +141,23 @@ async function pool<T>(tasks: (() => Promise<T>)[], size: number): Promise<T[]> 
   return results;
 }
 
-console.log(`Sampling ${spirits.length} spirit(s) × ${QUESTIONS.length} questions on ${args.model} at ${args.effort} effort…\n`);
+const on = args.model ? `on ${args.model}` : "each on its own model";
+console.log(`Sampling ${spirits.length} spirit(s) ${on} at ${args.effort} effort…\n`);
 for (const spirit of spirits) {
-  // The first question writes the prompt cache; the rest read it.
-  const [first, ...rest] = QUESTIONS;
-  const replies = [await sample(spirit.id, first), ...(await pool(rest.map((q) => () => sample(spirit.id, q)), 4))];
-  console.log(`── ${spirit.name} (${spirit.id}) ──`);
-  QUESTIONS.forEach((q, i) => console.log(`  ${q.padEnd(30)} → ${replies[i]}`));
+  // The first greeting writes the prompt cache; the rest read it.
+  const [first, ...others] = GREETINGS;
+  const greetings = [await ask(spirit.id, [], first), ...(await pool(others.map((g) => () => ask(spirit.id, [], g)), 3))];
+  const hello = greetings[GREETINGS.indexOf("HELLO")];
+  const history: Turn[] = [
+    { from: "sitters", text: "HELLO" },
+    { from: "spirit", text: hello.reply || "HELLO" },
+  ];
+  const answers = await pool(QUESTIONS.map((q) => () => ask(spirit.id, history, q)), 4);
+
+  console.log(`── ${spirit.name} (${args.model ?? personaFor(spirit.id)!.model}) ──`);
+  GREETINGS.forEach((g, i) => console.log(`  ${g.padEnd(30)} → ${greetings[i].line}`));
+  console.log(`  ${"·".repeat(30)}`);
+  QUESTIONS.forEach((q, i) => console.log(`  ${q.padEnd(30)} → ${answers[i].line}`));
   console.log();
 }
-
-const tokens = `${totals.input} input, ${totals.cacheWrite} cache-write, ${totals.cacheRead} cache-read, ${totals.output} output tokens`;
-if (args.model === "claude-haiku-5-5") {
-  const cost =
-    (totals.input * HAIKU_PRICE.input +
-      totals.cacheWrite * HAIKU_PRICE.cacheWrite +
-      totals.cacheRead * HAIKU_PRICE.cacheRead +
-      totals.output * HAIKU_PRICE.output) /
-    1_000_000;
-  console.log(`${tokens} ≈ $${cost.toFixed(4)}`);
-} else {
-  console.log(tokens);
-}
+console.log(`≈ $${dollars.toFixed(4)}${unpriced ? " (plus a model with no price listed here)" : ""}`);

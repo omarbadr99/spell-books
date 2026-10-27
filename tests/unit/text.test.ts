@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { MAX_HISTORY, recentHistory, type Turn } from "../../shared/seance";
 import {
+  isGreeting,
+  isYesNoQuestion,
   MAX_QUESTION_CHARS,
   MAX_REPLY_CHARS,
   normalizeBoardWord,
+  preferYesNo,
   replyToMoves,
   revealsName,
   sanitizeQuestion,
@@ -98,5 +102,53 @@ describe("saysGoodbye / revealsName", () => {
     expect(revealsName("SILAS CRANE KEEPER", ["SILAS", "CRANE"], "Silas Crane")).toBe(true);
     expect(revealsName("I AM SILASCRANE", ["SILAS", "CRANE"], "Silas Crane")).toBe(true);
     expect(revealsName("MY BROTHER KNEW", ["ANSELM"], "Brother Anselm")).toBe(false);
+  });
+});
+
+describe("isGreeting", () => {
+  it.each([
+    "HI", "HII", "HELLO", "HELLLO", "HEY", "HEYTHERE", "HITHERE", "HIEVERYONE", "HIIMOMAR", "HISPIRITS", "HELLOOPUS",
+    "ISANYONETHERE", "ISANYBODYOUTTHERE", "ANYONEHERE", "ISTHEREANYONE", "ISTHEREASPIRITHERE", "WHOSTHERE",
+    "SPIRITSAREYOUWITHUS", "AREYOUTHERE", "CANYOUHEARME", "GOODEVENING", "GREETINGS", "SALAM", "ASSALAMUALAIKUM",
+    "MARHABA", "HOLA", "BONJOUR", "YO", "HOWDY", "WHATSUP", "IS ANYONE THERE",
+  ])("%s opens a séance", (text) => {
+    expect(isGreeting(text)).toBe(true);
+  });
+
+  it.each(["", "YES", "NO", "CAT", "HIDE", "HIM", "HISTORY", "YOU", "YOUAREDEAD", "OIL", "WHOAREYOU", "WHATISYOURNAME", "DOGS", "123"])(
+    "%s does not",
+    (text) => {
+      expect(isGreeting(text)).toBe(false);
+    },
+  );
+});
+
+describe("isYesNoQuestion / preferYesNo", () => {
+  it("knows a yes/no question by how it starts", () => {
+    for (const q of ["AREYOUREAL", "ISITTRUE", "DOYOULIKEME", "WILLIBERICH", "CANWEHEARYOU", "AMIDEAD", "IS", "DOESSHELOVEME"]) {
+      expect(isYesNoQuestion(q), q).toBe(true);
+    }
+    for (const q of ["WHOAREYOU", "WHATISTHIS", "DOGS", "CANDLES", "ISLAND", "WILLOW", "HOWOLDAREYOU"]) {
+      expect(isYesNoQuestion(q), q).toBe(false);
+    }
+  });
+
+  it("cuts a reply to a yes/no question down to YES or NO", () => {
+    expect(preferYesNo("AREYOUAGHOST", "YES CHILD")).toBe("YES");
+    expect(preferYesNo("AREYOUAGHOST", "NO NEVER GOODBYE")).toBe("NO GOODBYE");
+    expect(preferYesNo("AREYOUAGHOST", "PERHAPS")).toBe("PERHAPS");
+    expect(preferYesNo("WHOAREYOU", "YES WHO ASKS")).toBe("YES WHO ASKS");
+  });
+});
+
+describe("recentHistory", () => {
+  it("keeps the greeting and the latest turns", () => {
+    const turns: Turn[] = Array.from({ length: MAX_HISTORY + 6 }, (_, i) => ({ from: i % 2 ? "spirit" : "sitters", text: `T${i}` }));
+    const kept = recentHistory(turns);
+    expect(kept).toHaveLength(MAX_HISTORY);
+    expect(kept.slice(0, 2).map((t) => t.text)).toEqual(["T0", "T1"]);
+    expect(kept[kept.length - 1].text).toBe(`T${MAX_HISTORY + 5}`);
+    expect(kept[2].from).toBe("sitters");
+    expect(recentHistory(turns.slice(0, 4))).toEqual(turns.slice(0, 4));
   });
 });

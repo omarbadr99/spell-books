@@ -1,12 +1,12 @@
-// The séance itself: the lock, the greeting that lights the candles, asking,
-// answering and goodbye. Whatever the sitters spell is sent the moment they
-// bring the planchette back to the center of the board.
+// The séance itself: the lock, the greeting that lights the candle and calls a
+// spirit, asking, answering and goodbye. Whatever the sitters spell is sent the
+// moment they bring the planchette back to the center of the board.
 //
 // locked → unlocking → dormant → summoning → listening ⇄ asking → answering → ending → ended
 
 import { pickSpirit, type PublicSpirit } from "../../shared/presence";
-import { MAX_HISTORY, type Turn } from "../../shared/seance";
-import { DIGITS, LETTERS, replyToMoves, revealsName, saysGoodbye } from "../../shared/text";
+import { recentHistory, type Turn } from "../../shared/seance";
+import { DIGITS, isGreeting, LETTERS, replyToMoves, revealsName, saysGoodbye } from "../../shared/text";
 import * as api from "../api";
 import type { BoardElement } from "../board/layout";
 import type { BoardView } from "../board/render";
@@ -21,10 +21,13 @@ import type { InkLine, SpiritLine, Voice } from "./lines";
 const HINTS = {
   locked: "Spell the secret word, then bring the planchette back to the center.",
   unprepared: "The board has not been prepared yet. See the README.",
-  dormant: "Say hello: spell HI, or IS ANYONE THERE, then bring the planchette back to the center.",
+  dormant: "Greet the spirits: spell HI, HELLO or IS ANYONE THERE, then bring the planchette back to the center.",
+  notGreeting: "The board stays dark. The spirits only come when greeted: HI, HELLO or IS ANYONE THERE.",
+  unanswered: "No one answered. Bring the planchette back to the center to call again.",
+  busy: "The spirits are crowding the board. Wait a moment, then call again.",
   listening: "Spell your question, then bring the planchette back to the center.",
   send: "Back to the center to send it. Tap your message to rub out a letter.",
-  unlocked: "The board knows you now. Say hello to light the candle.",
+  unlocked: "The board knows you now. Greet the spirits to light the candle.",
 };
 
 export interface SeanceParts {
@@ -48,8 +51,6 @@ export class Seance {
   phase: Phase = "booting";
   spirit: PublicSpirit | null = null;
   private lastSpiritId: string | null = null;
-  private openerIndex = 0;
-  private greeting = "";
   private history: Turn[] = [];
   private named = false;
   private questions = 0;
@@ -82,7 +83,10 @@ export class Seance {
       view.flash(el.id, 600);
       sound.knock();
       if (this.phase === "locked") void this.speakWord();
-      else if (this.phase === "dormant") void this.summon();
+      else if (this.phase === "dormant") {
+        if (isGreeting(ink.text)) void this.summon();
+        else this.ignore();
+      }
       else void this.ask();
       return;
     }
@@ -205,34 +209,62 @@ export class Seance {
     this.toLocked(result === "unprepared" ? HINTS.unprepared : HINTS.locked);
   }
 
-  /** The sitters' first words light the candles and call a spirit, which answers with its opener. */
+  /** Words that aren't a greeting fade into the dark board, and nothing comes. */
+  private ignore(): void {
+    const { ink, room, sound } = this.parts;
+    ink.soak();
+    sound.rub();
+    this.showSpelling();
+    room.hint(HINTS.notGreeting);
+  }
+
+  /**
+   * The sitters' greeting lights the candle and calls a spirit. It starts
+   * thinking at once, while the candle catches, and answers the greeting.
+   */
   private async summon(): Promise<void> {
     const { room, voice, possessor, sound, ink, spiritLine, dwell } = this.parts;
     this.setPhase("summoning");
     this.takeOver();
-    this.greeting = ink.soak();
+    const greeting = ink.soak();
     const spirit = pickSpirit(this.lastSpiritId);
     this.spirit = spirit;
-    this.openerIndex = Math.floor(Math.random() * spirit.openers.length);
     this.history = [];
     this.named = false;
     this.questions = 0;
-    markMet(spirit.id);
     spiritLine.begin();
     voice.setName(null);
     dwell.reset();
     room.hint("");
+    const answer = api.ask({ spiritId: spirit.id, history: [], question: greeting });
 
-    await this.parts.sleep(700);
+    await this.parts.sleep(500);
     room.setSpirit(spirit);
     room.setCandles(true);
     possessor.style = spirit.motion;
     sound.summon(spirit.sound);
-    await this.parts.sleep(1200);
+    await this.parts.sleep(1100);
     await possessor.jolt();
-    await this.parts.sleep(450);
-    await this.spell(spirit.openers[this.openerIndex]);
-    this.listen();
+    const result = await answer;
+    if (!("reply" in result)) return this.unanswered(greeting, result.error);
+
+    markMet(spirit.id);
+    if (result.note) room.hint(result.note);
+    this.history.push({ from: "sitters", text: greeting }, { from: "spirit", text: result.reply });
+    await this.answer(result.reply);
+  }
+
+  /** No spirit came after all: the candle goes out and the greeting comes back, to be sent again. */
+  private async unanswered(greeting: string, error: "slow" | "silent" | "locked" | "unprepared"): Promise<void> {
+    const { sound, ink, possessor, view } = this.parts;
+    if (error === "locked") return this.loseTheTable();
+    sound.release(1.2);
+    sound.gutter();
+    this.spirit = null;
+    await possessor.tremble();
+    this.toDormant(error === "slow" ? HINTS.busy : error === "unprepared" ? HINTS.unprepared : HINTS.unanswered);
+    ink.restore(greeting);
+    view.beckon(true);
   }
 
   private listen(): void {
@@ -251,30 +283,17 @@ export class Seance {
     this.taught = true;
     room.hint("");
     const question = ink.soak();
-    const stop = possessor.circle();
-    const result = await api.ask({
-      spiritId: spirit.id,
-      openerIndex: this.openerIndex,
-      greeting: this.greeting,
-      history: this.history.slice(-MAX_HISTORY),
-      question,
-    });
-    await stop();
-    this.setPhase("answering");
+    // No show while the spirit thinks: the planchette rests, and then it moves.
+    const result = await api.ask({ spiritId: spirit.id, history: recentHistory(this.history), question });
 
     if ("reply" in result) {
       if (result.note) room.hint(result.note);
       this.questions++;
       this.history.push({ from: "sitters", text: question }, { from: "spirit", text: result.reply });
-      await this.spell(result.reply);
-      if (!this.named && revealsName(result.reply, spirit.revealWords, spirit.name)) {
-        this.named = true;
-        this.parts.voice.setName(spirit.name);
-      }
-      if (saysGoodbye(result.reply)) return this.end();
-      return this.listen();
+      return this.answer(result.reply);
     }
 
+    this.setPhase("answering");
     if (result.error === "locked") return this.loseTheTable();
     if (result.error === "slow") {
       await this.spell("WAIT");
@@ -287,11 +306,26 @@ export class Seance {
     this.listen();
   }
 
+  /** The spirit spells its reply; a GOODBYE in it ends the séance. */
+  private async answer(reply: string): Promise<void> {
+    const spirit = this.spirit!;
+    this.setPhase("answering");
+    await this.spell(reply);
+    if (!this.named && revealsName(reply, spirit.revealWords, spirit.name)) {
+      this.named = true;
+      this.parts.voice.setName(spirit.name);
+    }
+    if (saysGoodbye(reply)) return this.end();
+    this.listen();
+  }
+
   /** The planchette spells a reply glyph by glyph, then drifts home (or stays on GOOD BYE). */
   private async spell(text: string): Promise<void> {
     const { possessor, spiritLine, view, sound, voice } = this.parts;
     spiritLine.begin();
     voice.spirit();
+    // The candle flares and the air stirs while the spirit speaks.
+    view.speak(true);
     for (const move of replyToMoves(text)) {
       if (move.type === "space") {
         spiritLine.space();
@@ -304,27 +338,27 @@ export class Seance {
         sound.chime(chimeIndex(id));
       });
     }
+    view.speak(false);
     spiritLine.fadeLater(3400, () => {
       if (this.sittersHaveIt) voice.sitters();
     });
     if (!saysGoodbye(text)) await possessor.home();
   }
 
+  /** The sitters say goodbye, and the spirit simply goes, without a word. */
   private async sittersLeave(): Promise<void> {
-    const spirit = this.spirit!;
-    this.setPhase("answering");
     this.takeOver();
     this.parts.ink.clear();
-    const farewell = spirit.farewells[Math.floor(Math.random() * spirit.farewells.length)];
-    await this.spell(`${farewell} GOODBYE`);
     await this.end();
   }
 
-  /** The candles go out one by one and the end card shows who came. */
+  /** A last gust as the spirit goes snuffs the candle, and the end card shows who came. */
   private async end(): Promise<void> {
-    const { room, sound, endCard, possessor } = this.parts;
+    const { room, sound, endCard, possessor, view } = this.parts;
     const spirit = this.spirit!;
     this.setPhase("ending");
+    view.depart();
+    await this.parts.sleep(420);
     sound.gutter();
     sound.release();
     room.setCandles(false);

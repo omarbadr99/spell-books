@@ -18,6 +18,11 @@ export class Stage {
   distance = 1;
   /** Device pixels per board unit on the board's plane. */
   pixels = 1;
+  /** How much further back than its place the camera stands: 1 at rest, more as the board first appears. */
+  dolly = 1;
+  /** What the camera sees of the board's plane from its place, in world space. */
+  view = { x0: 0, y0: -1100, x1: 1600, y1: 0 };
+  private center = { x: 0, y: 0 };
   private fitted = "";
 
   constructor(canvas: HTMLCanvasElement) {
@@ -43,22 +48,23 @@ export class Stage {
     const cy = (h / 2 - box.top) / scale;
     this.camera.aspect = w / h;
     this.camera.near = distance * 0.05;
-    this.camera.far = distance + 9000;
+    this.camera.far = distance * 1.6 + 9000;
+    this.center = { x: cx, y: -cy };
     this.camera.position.set(cx, -cy, distance);
     this.camera.lookAt(cx, -cy, 0);
     this.camera.updateProjectionMatrix();
     this.focal = (h * dpr) / (2 * tan);
     this.distance = distance;
     this.pixels = scale * dpr;
+    const halfH = distance * tan;
+    const halfW = halfH * this.camera.aspect;
+    this.view = { x0: cx - halfW, y0: -cy - halfH, x1: cx + halfW, y1: -cy + halfH };
     return true;
   }
 
   /** Draws a frame, the camera nudged by (dx, dy) board units for a shudder. */
   render(dx = 0, dy = 0): void {
-    this.camera.position.x += dx;
-    this.camera.position.y += dy;
+    this.camera.position.set(this.center.x + dx, this.center.y + dy, this.distance * this.dolly);
     this.renderer.render(this.scene, this.camera);
-    this.camera.position.x -= dx;
-    this.camera.position.y -= dy;
   }
 }

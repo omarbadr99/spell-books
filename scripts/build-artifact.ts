@@ -1,5 +1,5 @@
 // Builds a one-file copy of the board to publish as a claude.ai artifact: no
-// Worker, a lock kept in the browser (the word is OWL), and spirits that answer
+// Worker and no lock (the link is already private), and spirits that answer
 // through the viewer's own Claude. Writes dist-artifact/spirit-board.html.
 //
 //   npm run build:artifact
