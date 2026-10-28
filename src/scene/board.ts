@@ -2,13 +2,13 @@
 // sampled from its shape into a few hundred glowing points. The same points
 // make every other picture too: loose dust when the page opens, the word START
 // with the rest of the dust swirling round it, and the farewell, where they
-// become the spirit reaching out, the wind, and the ground underfoot. Each
-// point knows where it belongs in each of these, and which way its stroke's
-// edge faces on the board, so the light can catch it from the side.
+// become the land, the stream of light and the two figures holding hands (see
+// land.ts). Each point knows where it belongs in each of these, and which way
+// its stroke's edge faces on the board, so the light can catch it from the side.
 
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial, Vector3 } from "three";
 import type { BoardLayout } from "../board/layout";
-import { figureMask, HAND } from "./figure";
+import { framing, layOutFarewell, type FarewellLayout } from "./land";
 import { candleMask, textMask, type Drawn } from "./masks";
 import { coverage, KIND, sampleMask, seeded, type Sample } from "./sampling";
 import { BOARD_VERTEX, POINT_FRAGMENT } from "./shaders";
@@ -38,12 +38,16 @@ export interface BoardParticles {
   slots: Map<string, number>;
   /** Where START is written. */
   start: ViewBox;
-  /** Where the sitter stands in the farewell, facing the spirit: the middle of their feet, and their height. */
-  sitter: { x: number; y: number; height: number };
+  /**
+   * The farewell, laid out a little at a time: step it until it is done, then
+   * hand what it returns to `settle`, which puts the points in their places.
+   */
+  farewell: Generator<void, FarewellLayout>;
+  settle(layout: FarewellLayout): void;
 }
 
-/** Shares of the points that make START (the rest swirl round it), and the spirit and the wind in the farewell (the rest are ground). */
-const SHARE = { word: 0.3, spirit: 0.25, wind: 0.16 };
+/** The share of the points that make START; the rest swirl round it. */
+const WORD_SHARE = 0.3;
 
 /** The candle's proportions, shared with the flame that sits on it. */
 export function candleGeometry(layout: BoardLayout) {
@@ -89,9 +93,10 @@ function shuffled(n: number, rand: () => number): Uint32Array {
  * Builds the particles for a layout. `density` is how many points to spend on
  * each square board unit of stroke, so finer screens can afford more; `aspect`
  * is the view's width for its height, which sets how START and the farewell
- * are laid out.
+ * are laid out; and `grains` is how many more grains of dust the farewell's land
+ * needs to cover the screen.
  */
-export function buildBoard(layout: BoardLayout, density: number, aspect: number): BoardParticles {
+export function buildBoard(layout: BoardLayout, density: number, aspect: number, grains: number): BoardParticles {
   const rand = seeded(layout.kind === "wide" ? 1911 : 1903);
   const home: number[] = [];
   const seed: number[] = [];
@@ -160,7 +165,7 @@ export function buildBoard(layout: BoardLayout, density: number, aspect: number)
     y1: -(lb.y0 - mid.y) * scale,
   };
   const order = shuffled(n, rand);
-  const inWord = Math.round(n * SHARE.word);
+  const inWord = Math.round(n * WORD_SHARE);
   const wordPoints = sampleMask(letters, inWord, rand, 1.5);
   const inner = start.x1 * 1.1;
   const outer = start.x1 * 2.6;
@@ -174,35 +179,15 @@ export function buildBoard(layout: BoardLayout, density: number, aspect: number)
     }
   });
 
-  // The farewell: the spirit reaching out to the sitter, whose hands meet in the middle of the view.
-  const farewell = new Float32Array(n * 4);
-  const tall = Math.min(0.95, aspect * 1.45);
-  const feet = -0.36;
-  const spiritX = 0.012 - HAND.x * tall;
-  const figure = figureMask(600, 1);
-  const inSpirit = Math.round(n * SHARE.spirit);
-  const inWind = Math.round(n * SHARE.wind);
-  const spiritPoints = sampleMask(figure, inSpirit, rand, 1.5);
-  shuffled(n, rand).forEach((i, k) => {
-    if (k < inSpirit) {
-      const pt = spiritPoints[k];
-      const fx = (pt.x - figure.cx) / figure.height;
-      const fy = (figure.cy - pt.y) / figure.height;
-      farewell.set([spiritX + fx * tall, feet + fy * tall, gauss(rand) * 0.012, 0], i * 4);
-    } else if (k < inSpirit + inWind) {
-      // The wind: lanes across the view, most of them about the figures.
-      const lane = rand() < 0.65 ? feet + tall * (0.15 + 0.9 * rand()) : (rand() * 2 - 1) * 1.1;
-      farewell.set([rand(), lane, -0.45 + 0.6 * rand(), 1], i * 4);
-    } else {
-      farewell.set([rand() * 2 - 1, rand(), rand(), 2], i * 4);
-    }
-  });
-
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new BufferAttribute(new Float32Array(home), 3));
   geometry.setAttribute("aStart", new BufferAttribute(dust, 3));
   geometry.setAttribute("aWord", new BufferAttribute(word, 4));
-  geometry.setAttribute("aEnd", new BufferAttribute(farewell, 4));
+  // The farewell's places are filled in later, once they have been worked out (see settle).
+  const end = new BufferAttribute(new Float32Array(n * 4), 4);
+  const look = new BufferAttribute(new Float32Array(n * 4), 4);
+  geometry.setAttribute("aEnd", end);
+  geometry.setAttribute("aLook", look);
   geometry.setAttribute("aSeed", new BufferAttribute(new Float32Array(seed), 4));
   geometry.setAttribute("aInfo", new BufferAttribute(new Float32Array(info), 4));
   const material = new ShaderMaterial({
@@ -215,7 +200,6 @@ export function buildBoard(layout: BoardLayout, density: number, aspect: number)
       uNear: { value: 0 },
       uGlow: { value: new Float32Array(MAX_GLYPHS) },
       uHole: { value: new Vector3() },
-      uFeet: { value: feet },
     },
     vertexShader: BOARD_VERTEX,
     fragmentShader: POINT_FRAGMENT,
@@ -227,5 +211,16 @@ export function buildBoard(layout: BoardLayout, density: number, aspect: number)
   const points = new Points(geometry, material);
   points.frustumCulled = false;
   points.renderOrder = 3;
-  return { points, slots, start, sitter: { x: -spiritX, y: feet, height: tall } };
+  return {
+    points,
+    slots,
+    start,
+    farewell: layOutFarewell(n, grains, framing(aspect).aspect, seeded(layout.kind === "wide" ? 7 : 11)),
+    settle(farewell: FarewellLayout) {
+      end.copyArray(farewell.end);
+      look.copyArray(farewell.look);
+      end.needsUpdate = true;
+      look.needsUpdate = true;
+    },
+  };
 }

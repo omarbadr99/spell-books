@@ -3,7 +3,7 @@
 // the board's box on the page, so the particles line up with everything the page
 // draws over them. World space is board space with y pointing up: (x, -y, z).
 
-import { PerspectiveCamera, Scene, Vector3, WebGLRenderer } from "three";
+import { Color, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from "three";
 import type { BoardLayout } from "../board/layout";
 
 const FOV = 35;
@@ -18,6 +18,8 @@ export class Stage {
   distance = 1;
   /** Device pixels per board unit on the board's plane. */
   pixels = 1;
+  /** Device pixels the picture is drawn with for each CSS pixel. */
+  ratio = 1;
   /**
    * Where the eye has drifted to, in board units. The lens shifts to match, so
    * the board's plane stays exactly where it is while everything nearer or
@@ -31,6 +33,7 @@ export class Stage {
   /** A share of the screen's resolution to draw at: lowered on devices that can't keep up. */
   private detail = 1;
   private readonly point = new Vector3();
+  private readonly clear = new Color(0, 0, 0);
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance" });
@@ -47,6 +50,7 @@ export class Stage {
     this.fitted = key;
 
     this.renderer.setPixelRatio(dpr);
+    this.ratio = dpr;
     this.renderer.setSize(w, h, false);
     const scale = box.width / layout.width;
     const tan = Math.tan((FOV * Math.PI) / 360);
@@ -55,7 +59,8 @@ export class Stage {
     const cy = (h / 2 - box.top) / scale;
     this.camera.aspect = w / h;
     this.camera.near = distance * 0.05;
-    this.camera.far = distance * 1.6 + 9000;
+    // Far enough for the farewell's land, which reaches some way back.
+    this.camera.far = distance * 5 + 9000;
     this.center = { x: cx, y: -cy };
     this.camera.position.set(cx, -cy, distance);
     this.camera.lookAt(cx, -cy, 0);
@@ -67,6 +72,13 @@ export class Stage {
     const halfW = halfH * this.camera.aspect;
     this.view = { x0: cx - halfW, y0: -cy - halfH, x1: cx + halfW, y1: -cy + halfH };
     return true;
+  }
+
+  /** Clears to the farewell's dark grey as its land comes in (amount 0..1), and to black otherwise. */
+  background(amount: number): void {
+    const v = (16 / 255) * amount;
+    this.clear.setRGB(v, v, v, SRGBColorSpace);
+    this.renderer.setClearColor(this.clear, 1);
   }
 
   /**

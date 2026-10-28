@@ -453,86 +453,86 @@ body {
   transition: opacity 0.6s ease;
 }
 
-/* The farewell after GOODBYE: the sitter in porcelain, reaching out to the spirit, and a few words. */
+/*
+ * The farewell after GOODBYE: the land, and under it a few words and a way to begin again, set plainly
+ * like the end of a film: a light monospaced line in two greys, and a white button.
+ */
 #farewell {
+  --mono: "M PLUS 1 Code", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   position: fixed;
   inset: 0;
   z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px 40px;
+  padding: 70vh max(8.4vw, 22px, env(safe-area-inset-right, 0px)) 0 max(8.4vw, 22px, env(safe-area-inset-left, 0px));
   pointer-events: none;
+  animation: appear 1.6s ease both;
 }
 
 #farewell[hidden] {
   display: none;
 }
 
-#farewell::before {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  height: 38vh;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
-  animation: appear 2s ease both;
-}
-
-#farewell .sitter {
-  position: absolute;
-  filter: drop-shadow(0 0 28px rgba(185, 200, 255, 0.22)) drop-shadow(0 22px 26px rgba(0, 0, 0, 0.8));
-  animation: appear 1.8s ease both;
-}
-
-#farewell .sitter svg {
-  display: block;
-  overflow: visible;
-}
-
-#farewell .words {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: max(6vh, 28px, env(safe-area-inset-bottom, 0px));
-  text-align: center;
-  pointer-events: auto;
-  animation: appear 1.6s ease 1.4s both;
+.farewell-words {
+  font-family: var(--mono);
+  font-weight: 300;
+  font-size: clamp(22px, min(3.4vw, 5.4vh), 46px);
+  line-height: 1.12;
+  letter-spacing: -0.01em;
 }
 
 .farewell-line {
   margin: 0;
-  font-family: var(--serif);
-  font-weight: 700;
-  font-size: clamp(18px, 3.4vmin, 30px);
-  line-height: 1.35;
-  letter-spacing: 0.08em;
-  color: rgba(236, 238, 243, 0.92);
-  text-shadow: 0 0 18px rgba(185, 200, 255, 0.35);
+  color: #fff;
 }
 
-.farewell-line.soft {
-  margin-top: 4px;
-  font-size: clamp(13px, 2.2vmin, 18px);
-  color: rgba(236, 238, 243, 0.55);
+.farewell-line .dim,
+.farewell-line.dim {
+  color: #5e5e5e;
 }
 
 #restart {
-  margin-top: 22px;
-  padding: 11px 28px;
-  border: 1px solid rgba(236, 238, 243, 0.35);
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.4);
-  color: #eef0f6;
-  font: inherit;
-  font-size: 12px;
-  letter-spacing: 0.32em;
-  text-indent: 0.32em;
-  text-transform: uppercase;
+  flex: none;
+  margin-top: 0.15em;
+  padding: 0.78em 1.15em;
+  border: 0;
+  border-radius: 2px;
+  background: #fff;
+  color: #141414;
+  font: 500 clamp(12px, 1.05vw, 15px) / 1 var(--sans);
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: border-color 0.3s ease, background 0.3s ease;
+  pointer-events: auto;
+  transition: background 0.25s ease;
 }
 
 #restart:hover,
 #restart:focus-visible {
-  border-color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.06);
+  background: #d9d9d9;
   outline: none;
+}
+
+#restart:focus-visible {
+  box-shadow: 0 0 0 2px #101010, 0 0 0 4px #fff;
+}
+
+/* On a narrow screen the button goes under the words. */
+@media (max-width: 640px) {
+  #farewell {
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+}
+
+/* The dark of the farewell is even, like the night over the land. */
+.vignette {
+  transition: opacity 2s ease;
+}
+
+#room.parted .vignette {
+  opacity: 0;
 }
 
 @keyframes appear {
@@ -560,9 +560,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #farewell::before,
-  #farewell .sitter,
-  #farewell .words {
+  #farewell {
     animation: none;
   }
 }

@@ -6,11 +6,13 @@
 // light, the wind and the camera's sway; and it knows where every point of the
 // board shows on the screen, and which point is under the pointer.
 
-import { Vector3 } from "three";
+import { BufferGeometry, Points, ShaderMaterial, Vector3 } from "three";
 import { AirParticles, type Stirrer } from "../scene/air";
 import { bend, type BendFrame } from "../scene/bend";
 import { buildBoard, candleGeometry, FORMATION, MAX_GLYPHS, type BoardParticles, type Formation } from "../scene/board";
+import { dustLayer } from "../scene/dust";
 import { Flame } from "../scene/flame";
+import { finish, framing } from "../scene/land";
 import { CandleLight } from "../scene/light";
 import { Motes } from "../scene/motes";
 import { fbm1 } from "../scene/noise";
@@ -46,6 +48,17 @@ const PATHS = {
 type Path = keyof typeof PATHS;
 /** How far the eye sways, in board units: following the hand, and drifting by itself. */
 const SWAY = { x: 55, y: 36, idle: 14 };
+/** How long each frame may spend working out the farewell before it is needed, in ms. */
+const PREPARE_MS = 3;
+/**
+ * The farewell's grains: how many CSS pixels of screen each of the board's
+ * points may have before its grains are drawn bigger to fill it, and how many
+ * extra grains of dust lie on each CSS pixel of the land (a little over half
+ * the screen), with this many times more on a fine screen, drawn finer.
+ */
+const GRAIN = { area: 28.6, dust: 0.13, land: 0.55, fine: 1.4 };
+/** Whether the screen is a fine one, with more than one device pixel to each CSS pixel. */
+const FINE = () => Math.min(2, window.devicePixelRatio || 1) > 1.4;
 
 const planchetteMarkup = `
   <svg class="porcelain" ${BOX} aria-hidden="true">
@@ -104,8 +117,11 @@ interface Flight {
   done: () => void;
 }
 
-/** A layout's particles, and the shape of the view they were laid out for. */
-type Built = BoardParticles & { aspect: number };
+/**
+ * A layout's particles, the shape of the view they were laid out for, and the
+ * farewell's extra dust once its land has been worked out.
+ */
+type Built = BoardParticles & { aspect: number; dust: Points<BufferGeometry, ShaderMaterial> | null };
 
 export class BoardView {
   layout!: BoardLayout;
@@ -198,16 +214,18 @@ export class BoardView {
     shared.uBoard.value.set(layout.width / 2, -layout.height / 2, layout.width / 2, layout.height / 2);
     shared.uCurve.value = layout.kind === "wide" ? 1 : 0.5;
 
-    if (this.board) this.stage.scene.remove(this.board.points);
+    if (this.board) this.stage.scene.remove(this.board.points, ...(this.board.dust ? [this.board.dust] : []));
     let board = this.boards.get(layout.kind);
     if (!board) {
       const aspect = this.aspect;
-      board = { ...buildBoard(layout, this.density(), aspect), aspect };
+      board = { ...buildBoard(layout, this.density(), aspect, this.dust()), aspect, dust: null };
       board.points.material.uniforms.uGlow.value = this.glow;
       this.boards.set(layout.kind, board);
     }
     this.board = board;
-    this.stage.scene.add(board.points);
+    this.stage.scene.add(board.points, ...(board.dust ? [board.dust] : []));
+    // A board made while the farewell shows needs its places in it now.
+    if (this.shown === FORMATION.farewell || this.flight?.to === FORMATION.farewell) this.prepare(Infinity);
     // A board for a turned phone comes together out of the dust; otherwise it makes the same picture the old one did.
     if (changed && this.shown === FORMATION.board && !this.flight) {
       this.shown = FORMATION.dust;
@@ -230,9 +248,12 @@ export class BoardView {
 
   /** Throws away the particles and samples the glyphs again, e.g. once the board's font has arrived. */
   resample(): void {
-    for (const board of this.boards.values()) board.points.geometry.dispose();
+    for (const board of this.boards.values()) {
+      board.points.geometry.dispose();
+      board.dust?.geometry.dispose();
+    }
     this.boards.clear();
-    if (this.board) this.stage.scene.remove(this.board.points);
+    if (this.board) this.stage.scene.remove(this.board.points, ...(this.board.dust ? [this.board.dust] : []));
     this.board = null;
     this.setLayout(this.layout);
   }
@@ -251,6 +272,11 @@ export class BoardView {
   /** Points to spend per square board unit of stroke: more where the screen has the pixels to show them. */
   private density(): number {
     return Math.min(0.6, Math.max(0.16, 0.55 * this.pixels ** 1.4));
+  }
+
+  /** How many grains of dust the farewell's land needs to lie as thick as it should over the screen. */
+  private dust(): number {
+    return Math.round(innerWidth * innerHeight * GRAIN.land * GRAIN.dust * (FINE() ? GRAIN.fine : 1));
   }
 
   /**
@@ -277,9 +303,31 @@ export class BoardView {
     return this.fly(FORMATION.board, calm ? 0.01 : 3.8, "burst");
   }
 
-  /** The board breaks up into the farewell: the spirit reaching out, the wind and the ground. */
+  /** The board breaks up into the farewell: the land, the stream of light, and the sitter and the spirit holding hands. */
   farewell(calm: boolean): Promise<void> {
+    this.prepare(Infinity);
     return this.fly(FORMATION.farewell, calm ? 0.01 : 4.4, "scatter");
+  }
+
+  /**
+   * Works out the farewell for the board that is showing, a little in each
+   * frame (or, with no limit, all that is left), and puts its points in place
+   * once it is done.
+   */
+  private prepare(ms: number): void {
+    const board = this.board;
+    if (!board || board.dust) return;
+    const until = performance.now() + ms;
+    for (;;) {
+      const step = ms === Infinity ? { done: true as const, value: finish(board.farewell) } : board.farewell.next();
+      if (step.done) {
+        board.settle(step.value);
+        board.dust = dustLayer(step.value.dust);
+        this.stage.scene.add(board.dust);
+        return;
+      }
+      if (performance.now() > until) return;
+    }
   }
 
   /** And back together into START, for another séance. */
@@ -308,14 +356,6 @@ export class BoardView {
     const a = this.fromView(box.x0, box.y1);
     const b = this.fromView(box.x1, box.y0);
     return { left: a.x, top: a.y, right: b.x, bottom: b.y };
-  }
-
-  /** Where the sitter stands in the farewell, on the page: the middle of their feet, and their height, in CSS pixels. */
-  sitterBox(): { x: number; y: number; height: number } {
-    const sitter = this.board?.sitter ?? { x: 0.3, y: -0.6, height: 1 };
-    const feet = this.fromView(sitter.x, sitter.y);
-    const head = this.fromView(sitter.x, sitter.y + sitter.height);
-    return { x: feet.x, y: feet.y, height: feet.y - head.y };
   }
 
   /** A point on the board's plane given in view units (half-heights of the view about its middle, y up), on the page. */
@@ -388,6 +428,8 @@ export class BoardView {
     this.space.place(view, this.stage.distance);
     shared.uView.value.set((view.x0 + view.x1) / 2, (view.y0 + view.y1) / 2, (view.x1 - view.x0) / 2, (view.y1 - view.y0) / 2);
     shared.uDistance.value = this.stage.distance;
+    const frame = framing(this.aspect);
+    shared.uFrame.value.set(frame.zoom, frame.across);
   }
 
   tick(now: number, dt: number): void {
@@ -395,6 +437,7 @@ export class BoardView {
     this.time += dt;
     this.keepUp(dt);
     this.play(dt);
+    this.prepare(PREPARE_MS);
     this.sway(dt);
     this.fit();
     // START and the farewell are laid out for the view's shape; a much wider or narrower view lays them out again.
@@ -421,6 +464,10 @@ export class BoardView {
     shared.uFocal.value = this.stage.focal;
     shared.uDistance.value = this.stage.distance;
     shared.uDot.value = Math.min(1.6, Math.max(1, this.stage.pixels * 1.1));
+    // The farewell's grains: the board's points cover more of a small screen, so they are drawn finer there.
+    const ratio = this.stage.ratio;
+    const each = (innerWidth * innerHeight) / this.board.points.geometry.attributes.position.count;
+    shared.uGrain.value.set(ratio * Math.sqrt(each / GRAIN.area), ratio / Math.sqrt(FINE() ? GRAIN.fine : 1));
     shared.uLightPos.value.copy(light.position);
     shared.uLightColor.value.copy(light.glow);
     shared.uLightPower.value = light.power;
@@ -437,6 +484,16 @@ export class BoardView {
     const [wide, nearEye, middleOut] = PATHS[this.path];
     (uniforms.uPath.value as Vector3).set(wide, nearEye, middleOut);
     uniforms.uNear.value = this.near;
+    // The farewell's land comes in as the points fly to it, and goes again quickly as they leave.
+    const progress = flight ? Math.min(1, flight.t / flight.seconds) : 1;
+    const land =
+      flight?.to === FORMATION.farewell ? progress : flight?.from === FORMATION.farewell ? 1 - Math.min(1, progress / 0.45) : this.shown === FORMATION.farewell ? 1 : 0;
+    shared.uLand.value = land;
+    if (this.board.dust) this.board.dust.visible = land > 0.001;
+    this.stage.background(land);
+    // Once the land is all there, what it has cleared from the dark needn't be drawn at all.
+    const cleared = land > 0.999;
+    for (const layer of [...this.space.layers, this.streams.points, this.air.points]) layer.visible = !cleared;
     const hole = bend(this.pos.x, -this.pos.y, 0, this.frame());
     (uniforms.uHole.value as Vector3).set(hole[0], hole[1], onBoard && this.planchetteShown ? 1 : 0);
 
@@ -504,7 +561,7 @@ export class BoardView {
    */
   private sway(dt: number): void {
     const t = this.time;
-    const far = this.shown === FORMATION.board && !this.flight ? 1 : 1.6;
+    const far = this.shown === FORMATION.board && !this.flight ? 1 : this.shown === FORMATION.farewell && !this.flight ? 0.8 : 1.6;
     const tx = far * (this.hand.x * SWAY.x + SWAY.idle * fbm1(t * 0.09 + 5));
     const ty = far * (-this.hand.y * SWAY.y + SWAY.idle * 0.7 * fbm1(t * 0.07 + 9));
     const k = 1 - Math.exp(-dt / 0.9);

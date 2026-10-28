@@ -11,12 +11,13 @@ spelled. Greet the spirit and the candle lights, a breeze gets up and Mavis
 arrives: short-tempered, sassy, and not much of a talker. She takes the
 planchette out of your hand, spells her answer on her own, usually in a single
 word, and hands it back. Say goodbye and the board breaks up into a farewell:
-the spirit, made of particles, reaching out to you. The idea comes from Maxime
-Rivest's Tom Riddle diary for the reMarkable.
+a land of dust under the stars, with a stream of light along its ridge, where
+a ghost made of particles holds the hand of a solid figure walking away. The
+idea comes from Maxime Rivest's Tom Riddle diary for the reMarkable.
 
 <p align="center">
   <img src="docs/board-desktop.jpg" alt="The board on a laptop, curved round the viewer, as the spirit answers: the candle burns on the left and lights the nearest letters orange, the letters further off are dim and silvery, and the planchette rests on a letter" width="640">
-  <img src="docs/board-phone.jpg" alt="The farewell on a phone: the spirit, made of glowing particles, reaches out to a solid porcelain figure, their hands meeting, above the words It was nice to meet you, Come back again, and a Restart button" width="200">
+  <img src="docs/board-phone.jpg" alt="The farewell on a phone: on a ridge of rolling dunes made of white particles, a faint grey ghost holds the hand of a solid white figure walking away, above the words It was nice to meet you, Come back again, and a white Restart button" width="200">
 </p>
 
 There is no typing anywhere. Even the word that unlocks the board is spelled
@@ -58,8 +59,10 @@ with the planchette.
   she's done, the planchette slides back to your pointer.
 - **End the séance.** Rest the window on **GOODBYE** and the spirit leaves
   without a word: a last gust blows the candle out, and the board breaks up
-  into the farewell. She also leaves on her own if you're rude. **Restart**
-  gathers the particles back into START for another séance.
+  into the farewell. The far dunes form first, then the stream of light along
+  the ridge, then the ghost, and last the figure holding its hand, from the
+  feet up. She also leaves on her own if you're rude. **Restart** gathers the
+  particles back into START for another séance.
 
 ## The spirit
 
@@ -247,10 +250,19 @@ the board.
     letters legible.
   - The same points make every picture (`src/scene/board.ts`): loose dust,
     START with dust swirling round it in a tilted disc, the board, and the
-    farewell, where they become the spirit (sampled from a figure drawn in
-    `src/scene/figure.ts`), the wind, and the ground. Each point knows its
-    place in each picture, and the shader flies it from one to the next along
-    a curve that swings out toward the eye, so nothing is moved on the CPU.
+    farewell. Each point knows its place in each picture, and the shader flies
+    it from one to the next along a curve that swings out toward the eye, so
+    nothing is moved on the CPU.
+  - The farewell is laid out in a land of its own (`src/scene/land.ts`), seen
+    by an eye standing a little way off. The dunes, the hill and the ridge
+    were traced from where they should show on screen and projected back onto
+    the ground, so the land lands where it was drawn on any screen. The two
+    figures (`src/scene/figure.ts`) are a few ellipses, tapered limbs and
+    smooth outlines, filled with points. The ground's dust is spread evenly
+    where the eye can see it, so it crowds along the crests, and an extra
+    layer of dust (`src/scene/dust.ts`) covers what the board's points can't.
+    It is all worked out a few milliseconds at a time while START waits, and
+    framed smaller and moved to the middle on a phone held upright.
   - The board's curve (`src/scene/bend.ts`) is one small formula, shared by the
     shader that bends the particles and the page, which runs it backward
     (with a few steps of Newton's method) to find the point of the board under
@@ -265,8 +277,7 @@ the board.
     on a loop, gutters, bends with the wind and flares while the spirit speaks.
     The shaders light every point by the moon and the candle, each with an
     inverse-square fall-off and more where its stroke's edge faces the light.
-    The flame, the glow, the planchette and the sitter in the farewell are soft
-    gradients, not particles.
+    The flame, the glow and the planchette are soft gradients, not particles.
   - Behind it all, stars drift and the sky turns very slowly
     (`src/scene/sky.ts`), dust flows through space at three depths
     (`src/scene/space.ts`), and streams of smoke wind past

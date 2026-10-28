@@ -19,6 +19,15 @@ export const shared = {
   uBoard: { value: new Vector4(0, 0, 1, 1) },
   /** How strongly the board curves round the sitters, 1 in full. */
   uCurve: { value: 1 },
+  /** How far the farewell's land has come in, 0..1: the dark clears and the stars turn white for it. */
+  uLand: { value: 0 },
+  /** How the farewell is framed for the view's shape (see framing in land.ts). */
+  uFrame: { value: new Vector2(1, 0) },
+  /**
+   * Device pixels for a grain of size 1 in the farewell: for the board's points (x) and the extra dust (y),
+   * so the land looks as thick on every screen whatever its size and resolution.
+   */
+  uGrain: { value: new Vector2(1, 1) },
   /** Device pixels for a dot of size 1 on the board's plane: sizes the specks themselves. */
   uDot: { value: 1 },
   uLightPos: { value: new Vector3() },

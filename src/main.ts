@@ -1,4 +1,5 @@
 import "@fontsource/cinzel/700.css";
+import "@fontsource/m-plus-1-code/latin-300.css";
 import "./styles.css";
 
 import { boardWidthFor, buildLayout, chooseLayoutKind, elementById, hitTest, type BoardLayout, type LayoutKind } from "./board/layout";
@@ -194,7 +195,9 @@ async function part(): Promise<void> {
   roomEl.classList.add("parted");
   sound.farewell();
   const formed = view.farewell(calm);
-  window.setTimeout(() => farewell.show(view.sitterBox()), calm ? 0 : 2600);
+  window.setTimeout(() => {
+    if (scene === "farewell") farewell.show();
+  }, calm ? 0 : 3400);
   await formed;
 }
 
@@ -308,6 +311,8 @@ if (import.meta.env.DEV) {
       },
       // The scene itself, for measuring what each layer costs.
       view,
+      // Straight to the farewell, for looking at it.
+      part: () => void part(),
     },
   });
 }

@@ -3,6 +3,7 @@
 // moves in the air moves with the same wind (see wind.ts).
 
 import { BEND } from "./bend";
+import { LAND_GLSL, ROLE } from "./land";
 
 /** The candle's light, falling off with the square of the distance. */
 const CANDLELIGHT = /* glsl */ `
@@ -89,9 +90,11 @@ vec2 rotate2(vec2 v, float a) {
  * tilted disc, its near side passing close to the eye (1). When the séance
  * begins, START bursts and every point flies out past the eye and down into
  * its place on the board, the middle first (2). At the end the board breaks up
- * again into the farewell: the spirit reaching out, the wind, and the ground
- * rolling away underfoot (3). Points fly from one picture to the next along a
- * curve that swings out and toward the eye, each setting off at its own moment.
+ * again into the farewell (3): the land of dust under the stars, the stream of
+ * light flowing along its ridge, and the sitter and the spirit standing there
+ * holding hands, laid out in land space (see land.ts). Points fly from one
+ * picture to the next along a curve that swings out and toward the eye, each
+ * setting off at its own moment.
  *
  * On the board a point lives in the wind: it leans as gusts pass and swings
  * back, and the loosest grains lift off the strokes and stream away downwind,
@@ -107,7 +110,7 @@ uniform float uTo;      // the one they are making
 uniform float uMorph;   // how far from one to the other, 0..1
 uniform vec3 uPath;     // how wide they scatter on the way (x, half-heights of the view), how near the eye they fly (y, camera distances), and whether they set off from the board's middle outward (z = 1) or at random (0)
 uniform float uNear;    // how near the planchette's glass is to START, 0..1
-uniform float uFeet;    // where the figures stand in the farewell, in half-heights of the view
+uniform vec2 uGrain;    // device pixels for a grain of size 1 in the farewell (x)
 uniform float uAppear;
 uniform float uFocal;
 uniform float uDistance;
@@ -119,7 +122,8 @@ uniform float uMoonPower;
 uniform float uMoonRange;
 attribute vec3 aStart;  // where it drifts as dust, in view units (see inView)
 attribute vec4 aWord;   // its place in START (w = 0), or in the swirl round it (w = 1: angle, radius, height)
-attribute vec4 aEnd;    // its place in the farewell: in the spirit (w = 0), the wind (1: along, height, depth) or the ground (2: across, how far off)
+attribute vec4 aEnd;    // its place in the farewell, in land space, and what it is there (w: see ROLE in land.ts)
+attribute vec4 aLook;   // how it shows there: see FarewellLayout in land.ts
 attribute vec4 aSeed;
 attribute vec4 aInfo;   // its glyph's slot (-1 for the candle), its kind, and which way its stroke's edge faces
 varying vec3 vColor;
@@ -130,6 +134,7 @@ ${NOISE}
 ${WIND}
 ${ROTATE}
 ${BEND}
+${LAND_GLSL}
 
 /** Where a point is in a picture and how it shows there; size is a speck's size before perspective. */
 struct Look {
@@ -280,49 +285,85 @@ Look onBoard() {
   return l;
 }
 
-/** The farewell: the spirit reaching out, its loosest grains blowing away; the wind; and the ground. */
-Look farewell() {
+/** The farewell: the sitter and the spirit holding hands, the streams of light, and the dust of the land. */
+Look inLand() {
   Look l;
-  if (aEnd.w < 0.5) {
-    vec3 v = aEnd.xyz;
-    // A quarter of its grains stream away downwind, fade, and come back to go again.
-    float u = fract(uTime * (0.12 + 0.18 * aSeed.y) + aSeed.z * 7.0);
-    float blown = step(0.75, aSeed.w);
-    vec3 qs = vec3(aEnd.xy * 3.0, uTime * 0.2 + aSeed.x * 5.0);
-    vec2 swirl = vec2(vnoise(qs), vnoise(qs + vec3(7.7, 2.9, 1.1)));
-    v.xy += blown * (vec2(0.9, 0.14) * (0.12 + 0.5 * aSeed.y) * pow(u, 1.2) + swirl * 0.06 * u);
-    v.xy += 0.0035 * vec2(sin(uTime * 2.1 + aSeed.x * 40.0), cos(uTime * 1.7 + aSeed.y * 40.0));
-    l.p = inView(v);
-    float seen = mix(1.0, smoothstep(0.0, 0.05, u) * (1.0 - smoothstep(0.55, 1.0, u)), blown);
-    float flicker = 0.75 + 0.25 * sin(uTime * (1.5 + 3.0 * aSeed.y) + aSeed.z * 30.0);
-    l.color = mix(vec3(0.6, 0.72, 1.0), vec3(0.93, 0.96, 1.0), aSeed.w) * flicker;
-    l.alpha = (isHaze ? 0.06 : (isDust ? 0.5 : 0.8)) * seen;
-    l.size = 0.85 + aSeed.z * 1.3;
+  vec3 q = aEnd.xyz;
+  float role = aEnd.w;
+  l.color = vec3(1.0);
+  if (role < ${ROLE.spirit.toFixed(1)} - 0.5) {
+    // The sitter: solid and bright all through, a little dimmer toward their edges and their feet, and
+    // haloed faintly by the haze among their grains.
+    q.xy += 0.0015 * vec2(sin(uTime * 1.7 + aSeed.x * 40.0), cos(uTime * 1.3 + aSeed.y * 40.0));
+    l.p = fromLand(q);
+    l.color *= (0.82 + 0.18 * smoothstep(0.0, 0.35, aLook.x)) * (0.88 + 0.12 * aLook.y);
+    l.alpha = isHaze ? 0.035 : 1.0;
+    l.size = 2.4 + 1.0 * aSeed.z;
     return l;
   }
-  if (aEnd.w < 1.5) {
-    // The wind: specks blown across the view along wavering lanes.
-    float s = fract(aEnd.x + uTime * (0.03 + 0.05 * aSeed.y));
-    float x = (s - 0.5) * 2.6 * max(uView.z / uView.w, 1.0);
-    l.p = inView(vec3(x, aEnd.y + 0.05 * sin(x * 2.3 + uTime * 0.6 + aSeed.z * 6.283), aEnd.z));
-    l.color = vec3(0.8, 0.85, 0.96) * twinkle;
-    l.alpha = isHaze ? 0.0 : 0.45 * smoothstep(0.0, 0.15, s) * (1.0 - smoothstep(0.8, 1.0, s)) * (0.3 + 0.7 * aSeed.x);
-    l.size = 0.8 + aSeed.z;
+  if (role < ${ROLE.spray.toFixed(1)} - 0.5) {
+    // The spirit: thinner and greyer, fading toward its feet. Some of its grains drift off downwind, fade,
+    // and come back to go again.
+    float u = fract(uTime * (0.08 + 0.12 * aSeed.y) + aSeed.z * 7.0);
+    float blown = step(0.85, aSeed.w);
+    q += blown * vec3(0.3 + 0.4 * aSeed.y, 0.08, -0.1) * pow(u, 1.3);
+    q.xy += 0.003 * vec2(sin(uTime * 2.1 + aSeed.x * 40.0), cos(uTime * 1.7 + aSeed.y * 40.0));
+    l.p = fromLand(q);
+    float seen = mix(1.0, smoothstep(0.0, 0.08, u) * (1.0 - smoothstep(0.4, 1.0, u)), blown);
+    float flicker = 0.86 + 0.14 * sin(uTime * (1.5 + 2.0 * aSeed.y) + aSeed.z * 30.0);
+    l.color = vec3(0.88, 0.9, 0.93);
+    l.alpha = (isHaze ? 0.02 : 0.72) * seen * flicker * (0.3 + 0.7 * smoothstep(0.0, 0.4, aLook.y));
+    l.size = 2.2 + 1.0 * aSeed.z;
     return l;
   }
-  // The ground: dust lying level with the figures' feet and rolling away into the dark in long slow waves,
-  // brightest along the crests, so it shows in flowing lines.
-  float depth = mix(0.32, -1.9, pow(aEnd.y, 0.8));
-  float z = depth * uDistance;
-  float x = uView.x + aEnd.x * uView.z * 1.15 * (uDistance - z) / uDistance;
-  float wave = sin(x * 0.004 + depth * 3.0 + uTime * 0.35) + 0.6 * sin(x * 0.0023 - depth * 5.0 - uTime * 0.27 + 1.7);
-  float y = uView.y + uFeet * uView.w + uView.w * 0.035 * wave * (1.0 + 2.0 * max(-depth, 0.0));
-  float crest = pow(0.5 + 0.5 * sin(x * 0.006 + depth * 9.0 + 1.3 * wave - uTime * 0.4), 6.0);
-  l.p = vec3(x, y, z);
-  l.color = vec3(0.78, 0.82, 0.93) * (0.6 + 0.4 * aSeed.w) * twinkle;
-  l.alpha = isHaze ? 0.0 : (0.16 + 1.1 * crest) * smoothstep(-1.9, -1.25, depth) * smoothstep(0.32, 0.16, depth) * (0.45 + 0.55 * aSeed.x);
-  l.size = 0.8 + aSeed.z * 1.2;
+  if (role < ${ROLE.stream.toFixed(1)} - 0.5) {
+    // Spray: grains blowing off the spirit and about their hands, drifting downwind and fading.
+    float u = fract(uTime * (0.1 + 0.15 * aSeed.y) + aLook.x * 5.0);
+    vec3 n = vec3(q.xy * 3.0, uTime * 0.2 + aSeed.x * 5.0);
+    q += vec3(0.7, 0.16, -0.1) * u * (0.4 + aSeed.z) + 0.05 * vec3(vnoise(n), vnoise(n + vec3(7.7, 2.9, 1.1)), 0.0);
+    l.p = fromLand(q);
+    l.alpha = isHaze ? 0.0 : 0.55 * smoothstep(0.0, 0.15, u) * (1.0 - smoothstep(0.55, 1.0, u));
+    l.size = 1.3 + 0.7 * aSeed.z;
+    return l;
+  }
+  if (role < ${ROLE.ground.toFixed(1)} - 0.5) {
+    // The streams: each grain runs a short way along its line and fades in and out as it goes, so the
+    // whole stream flows.
+    float run = aLook.z;
+    float u = fract(uTime * (0.22 + 0.2 * aSeed.y) / run + aSeed.x);
+    float along = (u - 0.5) * run;
+    q.xz += vec2(cos(aLook.x), sin(aLook.x)) * along;
+    q.y += aLook.y * along + 0.012 * sin(uTime * 3.0 + aSeed.z * 40.0);
+    l.p = fromLand(q);
+    l.alpha = isHaze ? 0.0 : aLook.w * sqrt(sin(3.14159 * u)) * landFade(q);
+    l.size = 1.8 + 1.0 * aSeed.z;
+    return l;
+  }
+  // The dust of the land, lying still and glinting now and then.
+  l.p = fromLand(q);
+  l.alpha = isHaze ? 0.0 : min(1.0, aLook.x * 0.8) * landFade(q) * (0.8 + 0.2 * twinkle);
+  l.size = 1.7 + 0.9 * aSeed.z;
   return l;
+}
+
+/** The farewell, with its grains sized for the screen (see uGrain). */
+Look farewell() {
+  Look l = inLand();
+  l.size *= uGrain.x / uDot;
+  return l;
+}
+
+/**
+ * When a point arrives in the farewell, 0..1: the far land first and then the
+ * nearer, the streams from upstream down, then the spirit, and last the
+ * sitter, from their feet up.
+ */
+float arrival() {
+  float role = aEnd.w;
+  if (role > ${ROLE.ground.toFixed(1)} - 0.5) return 0.5 * (1.0 - clamp((aEnd.z - 2.4) / 10.0, 0.0, 1.0)) + 0.12 * aSeed.x;
+  if (role > ${ROLE.stream.toFixed(1)} - 0.5) return 0.25 + 0.4 * smoothstep(-8.0, 8.0, aEnd.x) + 0.1 * aSeed.x;
+  if (role > ${ROLE.spirit.toFixed(1)} - 0.5) return 0.55 + 0.3 * aSeed.x;
+  return 0.62 + 0.3 * aLook.y + 0.08 * aSeed.x;
 }
 
 Look formation(float which) {
@@ -343,6 +384,7 @@ void main() {
     // from the middle of the view and toward the eye, and glints as it lands.
     Look a = formation(uFrom);
     float order = mix(aSeed.x, length((position.xy - uBoard.xy) / uBoard.zw) * 0.68 + 0.1 * aSeed.y, uPath.z);
+    if (uTo > 2.5) order = arrival();
     float f = (uMorph - order * 0.5) / 0.5;
     float k = clamp(f, 0.0, 1.0);
     float e = k < 0.5 ? 4.0 * k * k * k : 1.0 - pow(2.0 - 2.0 * k, 3.0) * 0.5;
@@ -372,6 +414,39 @@ void main() {
 }
 `;
 
+/**
+ * More dust on the land, shown only in the farewell (the board's own points
+ * can't cover it all). As the land comes in, each grain settles into place out
+ * of the dark at its own moment, the far land first.
+ */
+export const DUST_VERTEX = /* glsl */ `
+uniform float uTime;
+uniform float uDistance;
+uniform vec2 uGrain;    // device pixels for a grain of size 1 (y)
+uniform float uLand;
+uniform vec4 uView;
+attribute vec4 aSeed;
+attribute float aLight;
+varying vec3 vColor;
+varying float vAlpha;
+varying float vSoft;
+${LAND_GLSL}
+
+void main() {
+  vec3 q = position;
+  float at = 0.1 + 0.5 * (1.0 - clamp((q.z - 2.4) / 10.0, 0.0, 1.0)) + 0.25 * aSeed.x;
+  float settled = smoothstep(at, at + 0.15, uLand);
+  q.y -= 0.12 * (1.0 - settled);
+  float twinkle = 0.82 + 0.18 * sin(uTime * (1.1 + aSeed.y * 2.4) + aSeed.z * 41.0);
+  vColor = vec3(1.0);
+  vAlpha = min(1.0, aLight * 0.8) * landFade(q) * twinkle * settled;
+  vSoft = 0.0;
+  vec4 mv = modelViewMatrix * vec4(fromLand(q), 1.0);
+  gl_PointSize = clamp((2.0 + 1.0 * aSeed.z) * uGrain.y * uDistance / -mv.z, 1.0, 7.0);
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
 /** Stars: drifting and twinkling, turning slowly with the whole sky. */
 export const STARS_VERTEX = /* glsl */ `
 uniform float uTime;
@@ -380,6 +455,7 @@ uniform float uDistance;
 uniform float uDot;
 uniform float uBright;
 uniform float uAppear;
+uniform float uLand;
 attribute vec4 aSeed;
 varying vec3 vColor;
 varying float vAlpha;
@@ -400,6 +476,10 @@ void main() {
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_PointSize = clamp((0.8 + aSeed.w * 2.4) * uDot * sqrt(uDistance / -mv.z), 1.0, 6.0);
   gl_Position = projectionMatrix * mv;
+  // In the farewell the stars are plain white points, and the land hides those low in the sky.
+  float low = smoothstep(0.62, 0.42, gl_Position.y / gl_Position.w);
+  vColor = mix(vColor, vec3(0.9) * (0.6 + 0.4 * twinkle), uLand);
+  vAlpha *= 1.0 - uLand * (0.35 + 0.65 * low);
 }
 `;
 
@@ -424,6 +504,7 @@ uniform float uSpeck;   // a speck's size: device pixels for sharp layers, board
 uniform float uBlur;    // 1 for the out-of-focus layer
 uniform float uOpacity;
 uniform float uClouds;  // how much the layer gathers into clouds
+uniform float uLand;    // how far the farewell's land has come in: the dark clears for it
 attribute vec4 aSeed;
 varying vec3 vColor;
 varying float vAlpha;
@@ -450,7 +531,7 @@ void main() {
   float twinkle = 0.6 + 0.4 * sin(uTime * (0.4 + aSeed.z * 1.6) + aSeed.w * 50.0);
   float light = candlelight(p);
   vColor = mix(c, uLightColor * 1.3, clamp(light * 1.5, 0.0, 0.85)) * (0.55 + 0.45 * twinkle) * (1.0 + light);
-  vAlpha = uOpacity * edges * cloud * (0.25 + 0.75 * aSeed.w) * uAppear;
+  vAlpha = uOpacity * edges * cloud * (0.25 + 0.75 * aSeed.w) * uAppear * (1.0 - 0.95 * uLand);
   vSoft = uBlur;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   float px = uBlur > 0.5
@@ -477,6 +558,7 @@ uniform float uDot;
 uniform float uAppear;
 uniform vec4 uView;     // the middle of what the camera sees of the board's plane, and half its width and height
 uniform float uAloft;   // 1 until the board has formed
+uniform float uLand;    // how far the farewell's land has come in
 attribute vec4 aSeed;
 attribute vec4 aLane;   // the stream's height in the view (-1..1), depth (a share of the camera's distance), how far it winds, and its phase
 attribute vec4 aShape;  // how wide it is, how often it twists, how fast it flows, and how bright it is
@@ -520,7 +602,7 @@ void main() {
   vColor = mix(c, uLightColor * 1.3, clamp(light * 1.4, 0.0, 0.8)) * twinkle * (1.0 + light);
   // The stream across the middle shows most while the glyphs float through it.
   float middle = 1.0 - smoothstep(0.2, 0.5, abs(aLane.x));
-  vAlpha = aShape.w * ends * (0.2 + 0.8 * clump) * (0.35 + 0.65 * core) * (0.3 + 0.7 * aSeed.x) * (1.0 + 1.6 * middle * uAloft) * uAppear;
+  vAlpha = aShape.w * ends * (0.2 + 0.8 * clump) * (0.35 + 0.65 * core) * (0.3 + 0.7 * aSeed.x) * (1.0 + 1.6 * middle * uAloft) * uAppear * (1.0 - uLand);
 
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   bool blur = aLane.y > 0.0;
