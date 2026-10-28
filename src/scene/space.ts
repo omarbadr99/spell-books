@@ -100,7 +100,7 @@ export class Space {
       const near = layer.blur ? layer.near * distance : layer.near;
       const far = layer.blur ? layer.far * distance : layer.far;
       // How much wider the view is at the layer's depth (its far end; the middle, for the motes near the eye),
-      // with room for the camera's sway and for the camera standing back as the board first appears.
+      // with room for the camera's sway, which reaches furthest while the letters float.
       const depth = layer.blur ? (near + far) / 2 : far;
       const widen = ((distance - depth) / distance) * (layer.blur ? 1.25 : 1.5) + 0.15;
       const u = this.layers[i].material.uniforms;

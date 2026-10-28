@@ -33,6 +33,10 @@ export interface BoardLayout {
   elements: BoardElement[];
   /** Where the planchette sleeps: the CENTER glyph, where resting sends what was spelled. */
   rest: Point;
+  /** Where the planchette waits before the séance, off to one side of the letters. */
+  waiting: Point;
+  /** Where START is written before the séance (over the center), and how far from it the glass still counts as on it. */
+  start: Point & { rx: number; ry: number; size: number };
   /** The candle: the middle of its base, and its height. It may stand just off the board, in the margin. */
   candle: Point & { h: number };
   planchetteScale: number;
@@ -98,49 +102,53 @@ function arcThrough(top: Point, halfWidth: number, drop: number): Pick<ArcSpec, 
 }
 
 function wideLayout(): BoardLayout {
-  const width = 1600;
-  const height = 1100;
+  const width = 1800;
+  const height = 1000;
   const elements = [
-    word("YES", "YES", "word", 300, 175, 125, 68, 66),
-    word("NO", "NO", "word", 1300, 175, 105, 68, 66),
-    ...arc({ letters: "ABCDEFGHIJKLM", ...arcThrough({ x: 800, y: 420 }, 610, 200), size: 78 }),
-    ...arc({ letters: "NOPQRSTUVWXYZ", ...arcThrough({ x: 800, y: 590 }, 560, 190), size: 78 }),
-    ...digitRow(900, 350, 1250, 56),
-    word("GOODBYE", "GOODBYE", "word", 800, 1010, 175, 60, 56),
-    word("CENTER", "", "action", 800, 742, 80, 80, 0),
+    word("YES", "YES", "word", 340, 140, 150, 70, 100),
+    word("NO", "NO", "word", 1460, 140, 120, 70, 100),
+    ...arc({ letters: "ABCDEFGHIJKLM", ...arcThrough({ x: 900, y: 300 }, 720, 130), size: 124 }),
+    ...arc({ letters: "NOPQRSTUVWXYZ", ...arcThrough({ x: 900, y: 500 }, 680, 120), size: 118 }),
+    ...digitRow(830, 470, 1330, 100),
+    word("GOODBYE", "GOODBYE", "word", 900, 940, 190, 54, 82),
+    word("CENTER", "", "action", 900, 700, 78, 78, 0),
   ];
   return {
     kind: "wide",
     width,
     height,
     elements,
-    rest: { x: 800, y: 742 },
-    candle: { x: -95, y: 1010, h: 290 },
+    rest: { x: 900, y: 700 },
+    waiting: { x: 1620, y: 870 },
+    start: { x: 900, y: 700, rx: 250, ry: 80, size: 132 },
+    candle: { x: 96, y: 975, h: 280 },
     planchetteScale: 1,
   };
 }
 
 function tallLayout(): BoardLayout {
   const width = 1000;
-  const height = 1320;
+  const height = 1500;
   const elements = [
-    word("YES", "YES", "word", 222, 128, 112, 62, 60),
-    word("NO", "NO", "word", 790, 128, 100, 62, 60),
-    ...arc({ letters: "ABCDEFGHI", ...arcThrough({ x: 500, y: 380 }, 420, 140), size: 74 }),
-    ...arc({ letters: "JKLMNOPQR", ...arcThrough({ x: 500, y: 520 }, 370, 130), size: 74 }),
-    ...arc({ letters: "STUVWXYZ", ...arcThrough({ x: 500, y: 655 }, 330, 110), size: 74 }),
-    ...digitRow(990, 95, 905, 50),
-    word("GOODBYE", "GOODBYE", "word", 500, 1118, 155, 56, 50),
-    word("CENTER", "", "action", 500, 846, 74, 74, 0),
+    word("YES", "YES", "word", 215, 120, 110, 62, 88),
+    word("NO", "NO", "word", 785, 120, 95, 62, 88),
+    ...arc({ letters: "ABCDEFGHI", ...arcThrough({ x: 500, y: 330 }, 420, 95), size: 112 }),
+    ...arc({ letters: "JKLMNOPQR", ...arcThrough({ x: 500, y: 490 }, 400, 90), size: 112 }),
+    ...arc({ letters: "STUVWXYZ", ...arcThrough({ x: 500, y: 650 }, 370, 80), size: 112 }),
+    ...digitRow(1060, 90, 910, 92),
+    word("GOODBYE", "GOODBYE", "word", 500, 1190, 170, 54, 76),
+    word("CENTER", "", "action", 500, 880, 74, 74, 0),
   ];
   return {
     kind: "tall",
     width,
     height,
     elements,
-    rest: { x: 500, y: 846 },
-    candle: { x: 112, y: 1305, h: 190 },
-    planchetteScale: 0.9,
+    rest: { x: 500, y: 880 },
+    waiting: { x: 820, y: 1350 },
+    start: { x: 500, y: 880, rx: 210, ry: 72, size: 112 },
+    candle: { x: 105, y: 1460, h: 200 },
+    planchetteScale: 0.85,
   };
 }
 
@@ -164,9 +172,9 @@ export function chooseLayoutKind(viewportWidth: number, viewportHeight: number):
 export function boardWidthFor(layout: BoardLayout, viewportWidth: number, viewportHeight: number): number {
   const tall = layout.kind === "tall";
   // Phones held sideways get a compact version of the lines around the board.
-  const chrome = viewportHeight < 520 ? 118 : tall ? 236 : 206;
-  const sides = tall ? 32 : 230;
-  const width = Math.min(viewportWidth - sides, (viewportHeight - chrome) * (layout.width / layout.height), tall ? 640 : 1160);
+  const chrome = viewportHeight < 520 ? 118 : tall ? 236 : 176;
+  const sides = 32;
+  const width = Math.min(viewportWidth - sides, (viewportHeight - chrome) * (layout.width / layout.height), tall ? 640 : 1700);
   return Math.max(240, Math.floor(width));
 }
 

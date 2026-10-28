@@ -17,6 +17,7 @@ declare global {
       ink(): string;
       speaker(): string;
       forming(): boolean;
+      start(): { x: number; y: number } | null;
       visited(): number;
       since(from: number): string[];
     };
@@ -83,7 +84,7 @@ async function flickHome(page: Page) {
   await page.mouse.up();
 }
 
-/** Presses Play, hurries the board's gathering along with a touch, and waits for it to settle. */
+/** Taps START, hurries the board along with a touch as it comes down, and waits for it to settle. */
 async function skipOpening(page: Page) {
   await page.getByRole("button", { name: "Begin the séance" }).click();
   await page.mouse.click(5, 5);
@@ -174,16 +175,26 @@ test("a device that already knows the word skips the lock", async ({ page, conte
   await phaseBecomes(page, "dormant");
 });
 
-test("the board waits in space until Play is pressed", async ({ page }) => {
+test("the letters float in the dark until the planchette is brought to START", async ({ page }) => {
   await page.goto(`/?speed=${SPEED}`);
   await phaseBecomes(page, "locked", "dormant");
-  await expect(page.locator("#play")).toBeVisible();
-  await expect(page.locator("#planchette.here")).toHaveCount(0);
   expect(await page.evaluate(() => window.__board.forming())).toBe(true);
-  // Touching the dark before Play does nothing.
+  await expect(page.locator("#planchette.here")).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.locator("#hint")).toHaveText("Bring the planchette to START.", { timeout: 30_000 });
+  // Touching the dark does nothing.
   await page.mouse.click(200, 200);
   expect(await page.evaluate(() => window.__board.forming())).toBe(true);
-  await skipOpening(page);
-  await expect(page.locator("#planchette.here")).toHaveCount(1);
+
+  // Bring the glass onto START and let go.
+  const from = await lens(page);
+  const to = await page.evaluate(() => window.__board.start());
+  expect(to).not.toBeNull();
+  await page.mouse.move(from.x, from.y + GRIP);
+  await page.mouse.down();
+  await page.mouse.move(to!.x, to!.y + GRIP, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForFunction(() => !window.__board.forming(), null, { timeout: 30_000 });
   await expect(page.locator("#room.intro")).toHaveCount(0);
+  await expect(page.locator("#play")).toBeHidden();
+  await expect(page.locator("#hint")).not.toHaveText("Bring the planchette to START.");
 });

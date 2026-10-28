@@ -34,6 +34,9 @@ const toRgb = (hex: string) => {
 };
 
 export class Room {
+  /** The séance's latest hint, held back while the page shows a prompt of its own. */
+  private held: string | null = null;
+
   constructor(
     private readonly el: HTMLElement,
     private readonly scenery: Scenery,
@@ -71,6 +74,30 @@ export class Room {
   }
 
   hint(text: string): void {
+    if (this.held !== null) {
+      this.held = text;
+      return;
+    }
+    this.show(text);
+  }
+
+  /**
+   * Shows a prompt of the page's own in place of the séance's hints, which wait
+   * until it is taken away again with null.
+   */
+  prompt(text: string | null): void {
+    if (text === null) {
+      if (this.held === null) return;
+      const held = this.held;
+      this.held = null;
+      this.show(held);
+      return;
+    }
+    if (this.held === null) this.held = this.hintEl.dataset.text ?? "";
+    this.show(text);
+  }
+
+  private show(text: string): void {
     if (this.hintEl.dataset.text === text) return;
     this.hintEl.dataset.text = text;
     this.hintEl.classList.add("changing");

@@ -1,9 +1,11 @@
 # Spirit Board
 
-A talking board made of light, where AI spirits answer. It opens in space:
-dust flowing past at every depth, a slow whirl of it in the middle, and a
-**Begin** button. Press it and the sound comes up as the whirl gathers into the
-board: letters, numbers and a candle, all made of particles. Greet the spirits
+A talking board made of light, where AI spirits answer. It opens in the dark,
+with streams of dust flowing past at every depth. The dust drifts together into
+the board's letters and numbers, which float tipped and scattered through the
+dark, some far back and some close to your eye, with **START** written in the
+middle. Bring the planchette to START and the letters swing down into the
+board, and a candle gathers beside them, all made of particles. Greet the spirits
 and the candle lights, a breeze gets up and one of four spirits arrives. You
 spell by dragging the planchette from letter to letter, then bring it back to
 the center of the board. Your message dissolves, the planchette pulls away from
@@ -12,8 +14,8 @@ word, while its candle flares and the wind tears grains off the letters. The
 idea comes from Maxime Rivest's Tom Riddle diary for the reMarkable.
 
 <p align="center">
-  <img src="docs/board-desktop.jpg" alt="The board on a laptop as Opus answers YES: its purple candle flares on the left and lights the nearest letters purple, the letters further off dim and uneven, and streams of grains blowing off YES and NO in the wind" width="640">
-  <img src="docs/board-phone.jpg" alt="A phone before the séance: a slow whirl of dust in the dark around a ring with a play mark and the word Begin" width="200">
+  <img src="docs/board-desktop.jpg" alt="The board on a laptop as Opus answers YES: the planchette rests on YES, the purple candle flares on the left and lights the nearest letters purple, and the letters further off are dim and uneven, with faint streams of smoke along the top and bottom" width="640">
+  <img src="docs/board-phone.jpg" alt="A phone before the séance: the board's letters float scattered and tipped through the dark, big ones close by and small ones far back, with START written in the middle and the planchette waiting below" width="200">
 </p>
 
 There is no typing anywhere. Even the word that unlocks the board is spelled
@@ -21,10 +23,11 @@ with the planchette.
 
 ## How to play
 
-- **Press Begin.** The board waits in space as a whirl of dust until you do.
-  Pressing it turns the sound on (browsers only allow sound after a touch),
-  and the dust gathers into the board. Touching again while it gathers hurries
-  it along.
+- **Bring the planchette to START.** Until you do, the letters float in the
+  dark. Drag the planchette onto START and pause there or let go (tapping START
+  works too). The sound comes up (browsers only allow sound after a touch) and
+  the letters swing down into the board. Touching the dark while they come
+  down hurries them along.
 - **Spell with the planchette.** Drag it and pause with its window on a
   letter. A brief pause is enough: the letter is added to your message at the
   top. Letters run together the way they do on a real board
@@ -93,11 +96,14 @@ Everything on the board is lit by two lights, and moved by one wind.
   and heat and smoke rise off the flame and bend away downwind.
 - **When a spirit speaks,** the flame flares up taller and whiter, its light
   reaches further, and the wind rises with it. You can hear the wind too.
-- **Space.** Behind the board, dust flows past at three depths: a far stream
-  that gathers into faint clouds, a nearer drift, and a few motes so close to
-  your eye that they're out of focus. The view sways a little toward your
-  pointer (and by itself on a phone), so the layers slide past one another
-  while the board stays put.
+- **Space.** Behind the board, streams of smoke flow along the top and the
+  bottom of the view and far back across the middle, winding and twisting as
+  they go, so they show as fine threads edge-on and faint veils face-on. Dust
+  flows past at three depths, the far layer gathering into faint clouds, and a
+  few motes drift so close to your eye that they're out of focus. The view
+  sways a little toward your pointer (and by itself on a phone), so the layers
+  slide past one another while the board stays put. Before the séance it sways
+  further, to show how deep the floating letters go.
 
 ## Run it on your computer
 
@@ -262,8 +268,12 @@ is complete and that its lines fit on the board.
   - Every glyph and the candle are drawn into a mask and sampled into points
     (`src/scene/masks.ts`, `src/scene/sampling.ts`). The points crowd the
     edges and run in short threads through the strokes, which keeps the
-    letters legible. Each point also has a start position out in the dark, so
-    the board can form, and later morph into other shapes.
+    letters legible. Each point also knows where it drifts as dust before its
+    glyph gathers, and where its glyph floats before the board forms: further
+    back the nearer it is to the board's middle, tipped and turned. The shader
+    gathers the dust into the glyphs, floats them, and swings each one down
+    into its place, so nothing is moved on the CPU. START is written the same
+    way (`src/scene/start.ts`).
   - The wind (`src/scene/wind.ts`) is a mean breeze, gusts that travel
     across the board, and curl noise for eddies, so the air swirls without
     piling up. The dust and the motes off the flame are moved through it on
@@ -276,8 +286,11 @@ is complete and that its lines fit on the board.
     inverse-square fall-off and more where its stroke's edge faces the light.
     The flame, the glow and the planchette are soft gradients, not particles.
   - Behind it all, stars drift and the sky turns very slowly
-    (`src/scene/sky.ts`), and dust flows through space at three depths
-    (`src/scene/space.ts`), computed in the shader so it costs almost nothing.
+    (`src/scene/sky.ts`), dust flows through space at three depths
+    (`src/scene/space.ts`), and streams of smoke wind past
+    (`src/scene/streams.ts`): ribbons of specks that the shader twists, folds
+    and frays as they flow. All of it is computed in the shader, so it costs
+    almost nothing.
   - The camera sways toward the pointer with its lens shifted to match, so the
     board's plane never moves while nearer and farther layers slide past it
     (`src/scene/stage.ts`). On a device that can't keep up, the scene drops its

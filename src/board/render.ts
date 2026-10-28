@@ -2,11 +2,11 @@
 // numbers, words and candle, the stars, the dust flowing through space and the
 // air of the room), with the planchette and the center ring laid over it as
 // soft gradients. It owns everything about the picture: which glyph glows, the
-// candle's light, the wind, the camera's sway, and how far the board has
-// gathered out of the whirl it waits in.
+// candle's light, the wind, the camera's sway, how far the glyphs have gathered
+// out of the dust and come down into the board, and START, which begins it all.
 
 import { AirParticles, type Stirrer } from "../scene/air";
-import { buildBoard, candleGeometry, MAX_GLYPHS, type BoardParticles, type Whirl } from "../scene/board";
+import { buildBoard, candleGeometry, MAX_GLYPHS, type BoardParticles, type Eye } from "../scene/board";
 import { Flame } from "../scene/flame";
 import { CandleLight } from "../scene/light";
 import { Motes } from "../scene/motes";
@@ -14,6 +14,8 @@ import { fbm1 } from "../scene/noise";
 import { Sky } from "../scene/sky";
 import { Space } from "../scene/space";
 import { Stage } from "../scene/stage";
+import { StartWord } from "../scene/start";
+import { Streams } from "../scene/streams";
 import { shared } from "../scene/uniforms";
 import { BREEZE, Wind, type Air } from "../scene/wind";
 import type { BoardLayout, Point } from "./layout";
@@ -29,17 +31,12 @@ const BOX = 'viewBox="-140 -175 280 300" width="280" height="300"';
 const FLAME_HEIGHT = 230;
 const PLANCHETTE_HEIGHT = 14;
 
-/** Seconds for the stars and the waiting whirl to fade in when the page opens. */
+/** Seconds for the stars and the dust to fade in when the page opens. */
 const APPEAR_SECONDS = 2.6;
-/** Once Play is pressed, in seconds: when each part begins and how long it takes. */
-const OPENING = {
-  form: [0.1, 3.7],
-  dolly: [0, 4.4],
-  planchette: 2.9,
-  end: 4.6,
-} as const;
-/** How much further back than its place the camera waits, so the whole whirl fits. */
-const DOLLY_FROM = 1.3;
+/** As the page opens, in seconds: the dust drifting together into the glyphs, and the planchette appearing. */
+const GATHER = { span: [0.3, 5.4], planchette: 3.4 } as const;
+/** Once the séance begins, in seconds: START blowing away, the glyphs coming down, and the end of it. */
+const OPENING = { gone: [0, 2.2], form: [0.3, 3.6], end: 4 } as const;
 /** How far the eye sways, in board units: following the hand, and drifting by itself. */
 const SWAY = { x: 70, y: 45, idle: 16 };
 
@@ -103,12 +100,19 @@ export class BoardView {
   private readonly stage: Stage;
   private readonly sky: Sky;
   private readonly space: Space;
+  private readonly streams: Streams;
   private readonly air: AirParticles;
   private readonly flame = new Flame();
   private readonly smoke = new Motes(160, false);
   private readonly embers = new Motes(80, true);
   private readonly boards = new Map<string, BoardParticles>();
   private board: BoardParticles | null = null;
+  private startWord: StartWord | null = null;
+  /** How far the dust has gathered into the glyphs, START blown away, and the glass come near START, each 0..1. */
+  private gathered = 0;
+  private gone = 0;
+  private near = 0;
+  private nearTarget = 0;
   private readonly glow = new Float32Array(MAX_GLYPHS);
   private readonly litUntil = new Float64Array(MAX_GLYPHS);
   private hoverSlot = -1;
@@ -120,7 +124,6 @@ export class BoardView {
   private emberDue = 0;
   private shudderUntil = 0;
   private box: DOMRect | null = null;
-  private unitsScale = 0;
   private pos: Point = { x: 0, y: 0 };
   private angle = 0;
   private last: Point | null = null;
@@ -129,7 +132,7 @@ export class BoardView {
   private readonly breath: Air = { x: 0, y: 0, gust: 0 };
   /** The opening: how far into it we are, whether the sitters are hurrying it, and what to do once it's over. */
   private opening: { t: number; hurry: boolean; done: () => void } | null = null;
-  /** Whether the board has been called out of the whirl yet. */
+  /** Whether the séance has begun, bringing the glyphs down into the board. */
   private begun = false;
   /** Where the viewer's hand is, from -1 to 1 across the screen, and where the eye is heading. */
   private readonly hand = { x: 0, y: 0 };
@@ -151,11 +154,11 @@ export class BoardView {
   ) {
     const roomy = innerWidth * innerHeight > 900_000;
     this.stage = new Stage(canvas);
-    this.stage.dolly = DOLLY_FROM;
     this.sky = new Sky(roomy ? 3600 : 2400);
     this.space = new Space(roomy);
+    this.streams = new Streams(roomy);
     this.air = new AirParticles(roomy ? 1100 : 650, 420);
-    this.stage.scene.add(this.sky.heavens, ...this.space.layers, this.air.points, this.flame.group, this.smoke.points, this.embers.points);
+    this.stage.scene.add(this.sky.heavens, ...this.space.layers, this.streams.points, this.air.points, this.flame.group, this.smoke.points, this.embers.points);
     this.air.points.renderOrder = 2;
     this.smoke.points.renderOrder = 4;
     this.embers.points.renderOrder = 7;
@@ -194,12 +197,17 @@ export class BoardView {
     if (this.board) this.stage.scene.remove(this.board.points);
     let board = this.boards.get(layout.kind);
     if (!board) {
-      board = buildBoard(layout, this.density(), this.whirl());
+      board = buildBoard(layout, this.density(), this.eye());
       board.points.material.uniforms.uGlow.value = this.glow;
       this.boards.set(layout.kind, board);
     }
     this.board = board;
     this.stage.scene.add(board.points);
+    if (!this.begun) {
+      this.dropStart();
+      this.startWord = new StartWord(layout, this.density());
+      this.stage.scene.add(this.startWord.points);
+    }
     this.sky.place(layout);
     this.flame.place(layout);
     const candle = candleGeometry(layout);
@@ -212,17 +220,18 @@ export class BoardView {
     shared.uMoonRange.value = layout.width * (layout.kind === "wide" ? 1.1 : 1.35);
   }
 
-  /** The whirl the board's points wait in: around the middle of the screen, as wide as the view. */
-  private whirl(): Whirl {
+  /** Where the camera looks and how far back it stands, which sets how far the glyphs float into the dark. */
+  private eye(): Eye {
     const { view } = this.stage;
-    const w = view.x1 - view.x0;
-    const h = view.y1 - view.y0;
-    return {
-      x: (view.x0 + view.x1) / 2,
-      y: (view.y0 + view.y1) / 2,
-      reach: Math.min(w * 0.5, h * 0.75),
-      tilt: Math.min(0.85, Math.max(0.5, (h / w) * 0.6)),
-    };
+    return { x: (view.x0 + view.x1) / 2, y: (view.y0 + view.y1) / 2, distance: this.stage.distance };
+  }
+
+  /** Takes START away for good. */
+  private dropStart(): void {
+    if (!this.startWord) return;
+    this.stage.scene.remove(this.startWord.points);
+    this.startWord.dispose();
+    this.startWord = null;
   }
 
   /** Throws away the particles and samples the glyphs again, e.g. once the board's font has arrived. */
@@ -244,22 +253,37 @@ export class BoardView {
     return Math.min(0.6, Math.max(0.16, 0.55 * this.pixels ** 1.4));
   }
 
+  /** The dust is simply there as glyphs, with no gathering: for sitters who would rather nothing moved much. */
+  settle(): void {
+    this.gathered = 1;
+    this.showPlanchette();
+  }
+
   /**
-   * Calls the board out of the whirl: every point swirls in to its place, the
-   * middle of the board first and the candle last, while the camera drifts in;
-   * then the planchette appears. Resolves once it is over. With `calm`,
-   * everything is simply there.
+   * Begins the séance: START blows away and every glyph swings down into its
+   * place on the board, the middle first and the candle last. Resolves once it
+   * is over. With `calm`, everything is simply there.
    */
   open(calm: boolean): Promise<void> {
     this.begun = true;
+    this.showPlanchette();
     if (calm) {
-      this.stage.dolly = 1;
-      this.showPlanchette();
+      this.dropStart();
       this.form(0.01);
       return Promise.resolve();
     }
     this.formed = 0;
     return new Promise((done) => (this.opening = { t: 0, hurry: false, done }));
+  }
+
+  /** How close the planchette's glass is to START, 0..1: START stirs and brightens as it comes. */
+  nearStart(amount: number): void {
+    this.nearTarget = amount;
+  }
+
+  /** Whether the planchette is there to be taken hold of yet. */
+  get planchetteHere(): boolean {
+    return this.planchette.classList.contains("here");
   }
 
   /** Where the viewer's hand is on the screen: the eye drifts a little toward it. */
@@ -273,7 +297,7 @@ export class BoardView {
     if (this.opening) this.opening.hurry = true;
   }
 
-  /** The board gathers out of the dark over `seconds`. */
+  /** The glyphs come down into the board over `seconds`, from wherever they float. */
   form(seconds: number): void {
     this.formSeconds = seconds;
     this.formStart = performance.now();
@@ -294,21 +318,16 @@ export class BoardView {
       const { view } = this.stage;
       this.air.setBounds(view.x0 - 100, view.y0 - 100, view.x1 + 100, view.y1 + 100);
       this.space.place(view, this.stage.distance);
+      this.streams.place(view);
     }
-    // While the camera stands back, the planchette's layer shrinks with the board, about the middle of the screen.
-    const s = 1 / this.stage.dolly;
-    if (!moved && s === this.unitsScale) return;
-    this.unitsScale = s;
-    const k = box.width / this.layout.width;
-    const cx = innerWidth / 2 - box.left;
-    const cy = innerHeight / 2 - box.top;
-    this.units.style.transform = `translate(${(cx * (1 - s)).toFixed(2)}px, ${(cy * (1 - s)).toFixed(2)}px) scale(${k * s})`;
+    if (moved) this.units.style.transform = `scale(${box.width / this.layout.width})`;
   }
 
   tick(now: number, dt: number): void {
     if (!this.board) return;
     this.time += dt;
     this.keepUp(dt);
+    this.gather(dt);
     this.play(dt);
     this.sway(dt);
     this.fit();
@@ -344,11 +363,17 @@ export class BoardView {
     shared.uDrift.value.set(wind.driftX, wind.driftY);
     wind.pack(shared.uGustA.value, shared.uGustB.value);
     const uniforms = this.board.points.material.uniforms;
+    uniforms.uGather.value = this.gathered;
     uniforms.uForm.value = this.formed;
+    if (this.startWord) {
+      this.near += (this.nearTarget - this.near) * (1 - Math.exp(-dt / 0.18));
+      this.startWord.set(this.gathered, this.near, this.gone);
+    }
     (uniforms.uHole.value as { set(x: number, y: number, z: number): void }).set(this.pos.x, -this.pos.y, 1);
 
     this.sky.update(this.time);
     this.space.update(dt, wind.presence * (0.4 + 0.6 * wind.stir));
+    this.streams.update(dt, wind.presence * (0.4 + 0.6 * wind.stir), 1 - this.formed);
     this.flame.update(light);
     this.stir(dt);
     // Motes of heat leave the tip of the flame, wherever the wind has bent it.
@@ -377,16 +402,26 @@ export class BoardView {
     this.stage.render(shake * 9 * Math.sin(now * 0.09), shake * 6 * Math.cos(now * 0.13));
   }
 
-  /** Moves the opening on: the board gathering and the camera drifting in. */
+  /**
+   * As the page opens the dust drifts together into the glyphs, and then the
+   * planchette appears. If the séance begins first, the rest gathers quickly.
+   */
+  private gather(dt: number): void {
+    if (this.gathered < 1) {
+      this.gathered = this.begun ? Math.min(1, this.gathered + dt / 1.2) : span(this.time, GATHER.span);
+    }
+    if (this.time >= GATHER.planchette && !this.planchetteHere) this.showPlanchette();
+  }
+
+  /** Moves the opening on: START blowing away and the glyphs coming down into the board. */
   private play(dt: number): void {
     const opening = this.opening;
     if (!opening) return;
     const t = (opening.t += dt * (opening.hurry ? 5 : 1));
-    this.stage.dolly = 1 + (DOLLY_FROM - 1) * (1 - easeInOut(span(t, OPENING.dolly)));
-    if (t >= OPENING.planchette) this.showPlanchette();
+    this.gone = easeInOut(span(t, OPENING.gone));
     if (this.formStart < 0) this.formed = span(t, OPENING.form);
     if (t < OPENING.end) return;
-    this.stage.dolly = 1;
+    this.dropStart();
     this.opening = null;
     opening.done();
   }
@@ -397,7 +432,7 @@ export class BoardView {
    */
   private keepUp(dt: number): void {
     this.frameTime += (dt - this.frameTime) * 0.05;
-    if (!this.adaptive || !this.begun || this.opening || this.frameTime < 1 / 28) {
+    if (!this.adaptive || this.time < 5 || this.opening || this.frameTime < 1 / 28) {
       this.slowFrames = 0;
       return;
     }
@@ -406,11 +441,15 @@ export class BoardView {
     if (this.stage.lighten()) this.frameTime = 1 / 40;
   }
 
-  /** The eye drifts toward the viewer's hand, and wanders a little by itself, so the dark has depth. */
+  /**
+   * The eye drifts toward the viewer's hand, and wanders a little by itself, so
+   * the dark has depth; further while the glyphs float, to show how deep it goes.
+   */
   private sway(dt: number): void {
     const t = this.time;
-    const tx = this.hand.x * SWAY.x + SWAY.idle * fbm1(t * 0.09 + 5);
-    const ty = -this.hand.y * SWAY.y + SWAY.idle * 0.7 * fbm1(t * 0.07 + 9);
+    const far = 1 + 0.7 * (1 - this.formed);
+    const tx = far * (this.hand.x * SWAY.x + SWAY.idle * fbm1(t * 0.09 + 5));
+    const ty = far * (-this.hand.y * SWAY.y + SWAY.idle * 0.7 * fbm1(t * 0.07 + 9));
     const k = 1 - Math.exp(-dt / 0.9);
     const { eye } = this.stage;
     eye.x += (tx - eye.x) * k;
@@ -542,24 +581,14 @@ export class BoardView {
   }
 
   toBoard(clientX: number, clientY: number): Point {
-    const { box, k, s, cx, cy } = this.mapping();
-    return { x: (cx + (clientX - box.left - cx) / s) / k, y: (cy + (clientY - box.top - cy) / s) / k };
+    const box = this.box ?? this.table.getBoundingClientRect();
+    const k = box.width / this.layout.width;
+    return { x: (clientX - box.left) / k, y: (clientY - box.top) / k };
   }
 
   toScreen(p: Point): Point {
-    const { box, k, s, cx, cy } = this.mapping();
-    return { x: box.left + cx + (p.x * k - cx) * s, y: box.top + cy + (p.y * k - cy) * s };
-  }
-
-  /** How board units map to the page: the box's scale, and the camera's dolly about the middle of the screen. */
-  private mapping() {
     const box = this.box ?? this.table.getBoundingClientRect();
-    return {
-      box,
-      k: box.width / this.layout.width,
-      s: 1 / this.stage.dolly,
-      cx: innerWidth / 2 - box.left,
-      cy: innerHeight / 2 - box.top,
-    };
+    const k = box.width / this.layout.width;
+    return { x: box.left + p.x * k, y: box.top + p.y * k };
   }
 }

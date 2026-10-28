@@ -419,108 +419,25 @@ body {
   opacity: 0;
 }
 
-/* Before the séance the board waits in space as a whirl of dust; this calls it. */
+/* START is written in the particles; this lies over it, so it can be tapped or reached from the keyboard. */
 #play {
   position: fixed;
   z-index: 3;
-  left: 50%;
-  top: 50%;
-  width: 116px;
-  height: 116px;
-  margin: -58px 0 0 -58px;
   padding: 0;
-  display: grid;
-  place-items: center;
   border: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(6, 8, 16, 0.6) 0 52%, transparent 70%);
-  color: #eef0f6;
-  font: inherit;
+  border-radius: 999px;
+  background: transparent;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition:
-    opacity 0.9s ease,
-    transform 1.3s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-
-#play::before,
-#play::after {
-  content: "";
-  position: absolute;
-  inset: 16px;
-  border-radius: 50%;
-  border: 1px solid rgba(232, 236, 250, 0.55);
-}
-
-/* A ring that breathes, and a fainter one rippling out of it. */
-#play::before {
-  box-shadow:
-    0 0 24px rgba(160, 176, 255, 0.22),
-    inset 0 0 18px rgba(160, 176, 255, 0.12);
-  animation: play-breathe 3.4s ease-in-out infinite;
-}
-
-#play::after {
-  border-color: rgba(232, 236, 250, 0.3);
-  animation: play-ripple 3.4s ease-out infinite;
-}
-
-#play svg {
-  width: 24px;
-  height: 24px;
-  margin-left: 3px;
-  fill: currentColor;
-  filter: drop-shadow(0 0 8px rgba(190, 200, 255, 0.55));
-}
-
-.play-label {
-  position: absolute;
-  top: 100%;
-  margin-top: 6px;
-  font-size: 11px;
-  letter-spacing: 0.46em;
-  text-indent: 0.46em;
-  text-transform: uppercase;
-  color: rgba(236, 238, 243, 0.55);
-  white-space: nowrap;
-}
-
-#play:hover::before,
-#play:focus-visible::before {
-  border-color: rgba(255, 255, 255, 0.95);
 }
 
 #play:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(236, 238, 243, 0.35);
-}
-
-#play.pressed {
-  opacity: 0;
-  transform: scale(1.7);
-  pointer-events: none;
+  outline: 1px solid rgba(236, 238, 243, 0.4);
+  outline-offset: 4px;
 }
 
 #play[hidden] {
   display: none;
-}
-
-@keyframes play-breathe {
-  50% {
-    transform: scale(1.05);
-    opacity: 0.75;
-  }
-}
-
-@keyframes play-ripple {
-  from {
-    transform: scale(1);
-    opacity: 0.7;
-  }
-  to {
-    transform: scale(1.75);
-    opacity: 0;
-  }
 }
 
 /* While the board opens out of the dark, the page's words wait. */
@@ -530,7 +447,6 @@ body {
 }
 
 #room.intro #voice,
-#room.intro #hint,
 #room.intro #mute,
 #room.intro #disclaimer,
 #room.intro #center-ring {
@@ -644,9 +560,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   #center-ring.beckon,
-  .endcard-again,
-  #play::before,
-  #play::after {
+  .endcard-again {
     animation: none;
   }
 }

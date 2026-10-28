@@ -18,8 +18,6 @@ export class Stage {
   distance = 1;
   /** Device pixels per board unit on the board's plane. */
   pixels = 1;
-  /** How much further back than its place the camera stands: 1 at rest, more before the board appears. */
-  dolly = 1;
   /**
    * Where the eye has drifted to, in board units. The lens shifts to match, so
    * the board's plane stays exactly where it is while everything nearer or
@@ -83,7 +81,7 @@ export class Stage {
 
   /** Draws a frame, the camera nudged by (dx, dy) board units for a shudder. */
   render(dx = 0, dy = 0): void {
-    const z = this.distance * this.dolly;
+    const z = this.distance;
     this.camera.position.set(this.center.x + dx + this.eye.x, this.center.y + dy + this.eye.y, z);
     this.camera.updateProjectionMatrix();
     // Shift the lens against the eye's drift, so the board's plane doesn't move.

@@ -49,6 +49,15 @@ describe.each(kinds)("%s layout", (kind) => {
     }
   });
 
+  it("writes START over the center, and has the planchette wait clear of every glyph", () => {
+    expect(hitTest(layout, layout.start.x, layout.start.y)?.id).toBe("CENTER");
+    expect(hitTest(layout, layout.waiting.x, layout.waiting.y)).toBeNull();
+    const s = layout.planchetteScale;
+    // The planchette's porcelain, around its window, stays on the board while it waits.
+    expect(layout.waiting.x + 110 * s).toBeLessThanOrEqual(layout.width);
+    expect(layout.waiting.y + 100 * s).toBeLessThanOrEqual(layout.height);
+  });
+
   it("keeps the candle clear of the glyphs", () => {
     const { candle } = layout;
     for (let y = candle.y - candle.h * 1.2; y <= candle.y; y += 6) {
@@ -63,9 +72,11 @@ describe("layout helpers", () => {
   it("sizes the board to fit the window", () => {
     expect(boardWidthFor(buildLayout("tall"), 390, 844)).toBe(358);
     const wide = boardWidthFor(buildLayout("wide"), 1280, 800);
-    expect(wide).toBeLessThanOrEqual(1280 - 230);
-    expect(wide * (1100 / 1600)).toBeLessThanOrEqual(800 - 206);
-    expect(boardWidthFor(buildLayout("wide"), 2560, 1440)).toBe(1160);
+    expect(wide).toBeLessThanOrEqual(1280 - 32);
+    expect(wide * (1000 / 1800)).toBeLessThanOrEqual(800 - 176);
+    // Big enough that the letters read from across a room.
+    expect(wide).toBeGreaterThan(1050);
+    expect(boardWidthFor(buildLayout("wide"), 2560, 1440)).toBe(1700);
     expect(boardWidthFor(buildLayout("tall"), 200, 300)).toBe(240);
   });
 
