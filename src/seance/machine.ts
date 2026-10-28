@@ -245,7 +245,9 @@ export class Seance {
     sound.summon(spirit.sound);
     await this.parts.sleep(1100);
     await possessor.jolt();
+    const release = possessor.hold();
     const result = await answer;
+    await release();
     if (!("reply" in result)) return this.unanswered(greeting, result.error);
 
     markMet(spirit.id);
@@ -283,8 +285,10 @@ export class Seance {
     this.taught = true;
     room.hint("");
     const question = ink.soak();
-    // No show while the spirit thinks: the planchette rests, and then it moves.
+    // No show while the spirit thinks: the planchette rests under the fingers, and then it moves.
+    const release = possessor.hold();
     const result = await api.ask({ spiritId: spirit.id, history: recentHistory(this.history), question });
+    await release();
 
     if ("reply" in result) {
       if (result.note) room.hint(result.note);

@@ -2,7 +2,8 @@
 // there is no Worker and no lock (the link is already private), and the spirits
 // answer through the viewer's own Claude, via the artifact's `sample` capability.
 // Each spirit asks for its namesake model; if that one isn't available here, the
-// call falls back to a model of a similar size.
+// call falls back to a model of a similar size, and if it is slow to answer, a
+// quick one answers for it so the séance never stalls.
 
 import { spiritById } from "../../shared/presence";
 import { REFUSAL_REPLY } from "../../shared/seance";
@@ -12,22 +13,63 @@ import { buildSystemPrompt, conversation, personaFor } from "../../worker/spirit
 import type { AskBody, AskResult, EnterResult, SeatState } from "../api";
 
 type Tier = "quick" | "default" | "complex";
-type Sample = (
-  input: string | { role: "user" | "assistant"; content: string }[],
-  options?: { model?: string; modelTier?: Tier; effort?: "low" | "medium" | "high"; cache?: boolean },
-) => Promise<{ text: string; truncated: boolean }>;
+type Input = string | { role: "user" | "assistant"; content: string }[];
+interface SampleOptions {
+  model?: string;
+  modelTier?: Tier;
+  effort?: "low" | "medium" | "high";
+  cache?: boolean;
+  signal?: AbortSignal;
+}
+type Sample = (input: Input, options?: SampleOptions) => Promise<{ text: string; truncated: boolean }>;
+type PermissionState = "granted" | "prompt" | "denied" | "unavailable";
+interface Permissions {
+  state(name: string): Promise<PermissionState>;
+  request(names?: readonly string[]): Promise<Record<string, PermissionState>>;
+}
 
 declare global {
   interface Window {
-    claude?: { use(name: "sample"): Promise<Sample | null> };
+    claude?: {
+      use(name: "sample"): Promise<Sample | null>;
+      use(name: "permissions"): Promise<Permissions | null>;
+    };
   }
 }
+
+/** How long a spirit may think before a quicker voice answers for it. */
+const PATIENCE_MS = 9_000;
 
 /** The size of model to fall back to when a spirit's own model can't be used. */
 const TIERS: Record<string, Tier> = { haiku: "quick", sonnet: "default", fable: "complex", opus: "complex" };
 
 const samplePromise: Promise<Sample | null> = window.claude?.use("sample").catch(() => null) ?? Promise.resolve(null);
+const permissionsPromise: Promise<Permissions | null> =
+  window.claude?.use("permissions").catch(() => null) ?? Promise.resolve(null);
 let canned = false;
+
+/**
+ * Asks the viewer, up front, to let the spirits answer through their Claude.
+ * Called from the Play button, so the question comes before the séance does
+ * instead of in the middle of a greeting.
+ */
+export async function prepare(): Promise<void> {
+  const permissions = await permissionsPromise;
+  await permissions?.request(["sample"]).catch(() => undefined);
+}
+
+/** Runs one call, cut off after `ms` (if given). */
+async function within(sample: Sample, input: Input, options: SampleOptions, ms: number | null): Promise<string> {
+  const ctl = new AbortController();
+  const timer = ms === null ? 0 : window.setTimeout(() => ctl.abort(), ms);
+  try {
+    return (await sample(input, { ...options, signal: ctl.signal })).text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const codeOf = (error: unknown) => (error as { code?: string } | null)?.code;
 
 export async function checkSeat(): Promise<SeatState> {
   return "seated";
@@ -56,13 +98,23 @@ export async function ask(body: AskBody): Promise<AskResult> {
     i === 0 ? { ...line, content: `${rules}\n\n${line.content}` } : line,
   );
 
+  // While the viewer is still deciding whether to allow Claude, wait as long as they take.
+  const deciding = (await (await permissionsPromise)?.state("sample").catch(() => null)) === "prompt";
   try {
-    const { text } = await sample(input, { model: persona.model, modelTier: TIERS[spirit.id], effort: "low", cache: false });
+    let text: string;
+    try {
+      const own = { model: persona.model, modelTier: TIERS[spirit.id], effort: "low", cache: false } as const;
+      text = await within(sample, input, own, deciding ? null : PATIENCE_MS);
+    } catch (error) {
+      if (codeOf(error) !== "cancelled") throw error;
+      // The spirit's own model is slow tonight: a quicker voice answers for it.
+      text = await within(sample, input, { modelTier: "quick", effort: "low", cache: false }, 12_000);
+    }
     const reply = sanitizeReply(text);
     if (!reply) return { error: "silent" };
     return { reply: body.history.length ? preferYesNo(body.question, reply) : reply };
   } catch (error) {
-    switch ((error as { code?: string } | null)?.code) {
+    switch (codeOf(error)) {
       case "rate_limited":
         return { error: "slow" };
       case "refused":

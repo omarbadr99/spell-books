@@ -11,7 +11,7 @@ export default defineConfig({
   base: "./",
   resolve: {
     alias: [
-      { find: /^\.\.\/api$/, replacement: here("./src/artifact/api.ts") },
+      { find: /^\.{1,2}\/api$/, replacement: here("./src/artifact/api.ts") },
       { find: /^@fontsource\/.+\.css$/, replacement: here("./src/artifact/empty.css") },
     ],
   },

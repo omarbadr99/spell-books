@@ -8,6 +8,9 @@ import type { Air } from "./wind";
 
 /** White-hot: what the candle's color burns toward as it flares. */
 const HOT = new Color("#fff4e0");
+/** How stiffly the flame springs back upright, and how quickly its sway dies away. */
+const SPRING = 160;
+const DAMPING = 9;
 
 export class CandleLight {
   /** 0 when out, 1 when burning; eases between the two. */
@@ -69,10 +72,11 @@ export class CandleLight {
     this.flare += (this.flareTarget - this.flare) * (1 - Math.exp(-dt / (this.flareTarget > this.flare ? 0.2 : 1.3)));
 
     // The flame leans with the wind like a reed on a spring: quick to bend, with a little wobble.
+    // Stepped implicitly, so a long frame can't throw it into ever-wilder swings.
     const speed = Math.hypot(wind.x, wind.y);
     this.flutter = Math.min(1.5, speed / 120);
-    const push = Math.max(-1.3, Math.min(1.3, wind.x / 150));
-    this.leanSpeed += ((push - this.lean) * 160 - this.leanSpeed * 9) * dt;
+    const push = Number.isFinite(wind.x) ? Math.max(-1, Math.min(1, wind.x / 170)) : 0;
+    this.leanSpeed = (this.leanSpeed - SPRING * (this.lean - push) * dt) / (1 + DAMPING * dt + SPRING * dt * dt);
     this.lean += this.leanSpeed * dt;
 
     // Flicker: the slow breathing of the flame and its quick shivers, never repeating.

@@ -8,6 +8,16 @@ import { buildSystemPrompt, conversation, type SpiritPersona } from "./spirits";
 
 type CreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export type SpiritClient = { beta: { messages: Pick<Anthropic["beta"]["messages"], "create"> } };
+
+export const spiritClient = (apiKey: string): SpiritClient => new Anthropic({ apiKey });
+
+/** The quick model that answers for a spirit whose own model is too slow or too busy tonight. */
+export const QUICK_MODEL = "claude-haiku-5-5";
+/**
+ * How long a spirit may think before the quick model answers for it. Both tries
+ * together stay inside the page's own 32-second wait.
+ */
+const PATIENCE_MS = 12_000;
 export type SpiritAnswer = { kind: "reply"; reply: string } | { kind: "silent" } | { kind: "busy" };
 export type Effort = "low" | "medium" | "high";
 
@@ -49,7 +59,22 @@ export async function askSpirit(
   question: string,
 ): Promise<SpiritAnswer> {
   try {
-    const response = await client.beta.messages.create(spiritRequest(model, persona, history, question));
+    let response: Anthropic.Beta.Messages.BetaMessage;
+    try {
+      response = await client.beta.messages.create(spiritRequest(model, persona, history, question), {
+        timeout: PATIENCE_MS,
+        maxRetries: 0,
+      });
+    } catch (error) {
+      const slowOrBusy = error instanceof Anthropic.APIConnectionTimeoutError || error instanceof Anthropic.InternalServerError;
+      if (model === QUICK_MODEL || !slowOrBusy) throw error;
+      // A quicker voice answers for the spirit rather than leave the sitters waiting.
+      console.warn(`${model} was too slow or busy; the quick model answered instead.`);
+      response = await client.beta.messages.create(spiritRequest(QUICK_MODEL, persona, history, question), {
+        timeout: PATIENCE_MS,
+        maxRetries: 0,
+      });
+    }
     const reply = replyFrom(response, history, question);
     return reply ? { kind: "reply", reply } : { kind: "silent" };
   } catch (error) {

@@ -2,9 +2,9 @@
 // hands it to the same handleApi the Cloudflare Worker uses, and writes the answer
 // back. scripts/build-vercel.ts bundles this into each function.
 
-import Anthropic from "@anthropic-ai/sdk";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { handleApi } from "../worker/api";
+import { spiritClient } from "../worker/spirit";
 import { memoryLimiter } from "./limiter";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -45,9 +45,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const method = req.method ?? "GET";
   const body = method === "GET" || method === "HEAD" ? undefined : new Uint8Array(await readBody(req));
 
-  const response = await handleApi(new Request(url, { method, headers, body }), env(), {
-    createClient: (apiKey) => new Anthropic({ apiKey }),
-  });
+  const response = await handleApi(new Request(url, { method, headers, body }), env(), { createClient: spiritClient });
 
   res.statusCode = response.status;
   response.headers.forEach((value, key) => {

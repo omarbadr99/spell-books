@@ -165,6 +165,18 @@ describe("asking a spirit", () => {
     expect(params.betas).toEqual(fallback ? ["server-side-fallback-2026-07-01"] : undefined);
   });
 
+  it("lets the quick model answer when the spirit's own is too slow", async () => {
+    const env = makeEnv();
+    const create = vi
+      .fn(async (_params: Params) => message([{ type: "text", text: "YES" }]))
+      .mockRejectedValueOnce(new Anthropic.APIConnectionTimeoutError());
+    const deps = { createClient: () => ({ beta: { messages: { create } } }) } as unknown as ApiDeps;
+    const res = await handleApi(req("POST", "/api/ask", goodAsk, await seatFor(env)), env, deps);
+    expect(await res.json()).toEqual({ reply: "YES" });
+    expect(create.mock.calls.map(([params]) => params.model)).toEqual(["claude-opus-5-5", "claude-haiku-5-5"]);
+    expect(create.mock.calls[1][0].fallbacks).toBeUndefined();
+  });
+
   it("puts every spirit on one model when SPIRIT_MODEL is set", async () => {
     const env = makeEnv({ SPIRIT_MODEL: "claude-haiku-5-5" });
     const { create, deps } = fakeClaude(message([{ type: "text", text: "NO" }]));

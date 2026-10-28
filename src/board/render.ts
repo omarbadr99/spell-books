@@ -1,17 +1,19 @@
 // The board as the sitters see it: a Three.js scene of particles (the letters,
-// numbers, words and candle, the sky and the air), with the planchette and the
-// center ring laid over it as soft gradients. It owns everything about the
-// picture: which glyph glows, the candle's light, the wind, how far the board
-// has formed, and the opening that brings it all out of the dark.
+// numbers, words and candle, the stars, the dust flowing through space and the
+// air of the room), with the planchette and the center ring laid over it as
+// soft gradients. It owns everything about the picture: which glyph glows, the
+// candle's light, the wind, the camera's sway, and how far the board has
+// gathered out of the whirl it waits in.
 
 import { AirParticles, type Stirrer } from "../scene/air";
-import { buildBoard, candleGeometry, MAX_GLYPHS, type BoardParticles } from "../scene/board";
+import { buildBoard, candleGeometry, MAX_GLYPHS, type BoardParticles, type Whirl } from "../scene/board";
 import { Flame } from "../scene/flame";
 import { CandleLight } from "../scene/light";
 import { Motes } from "../scene/motes";
+import { fbm1 } from "../scene/noise";
 import { Sky } from "../scene/sky";
+import { Space } from "../scene/space";
 import { Stage } from "../scene/stage";
-import { Title } from "../scene/title";
 import { shared } from "../scene/uniforms";
 import { BREEZE, Wind, type Air } from "../scene/wind";
 import type { BoardLayout, Point } from "./layout";
@@ -27,18 +29,19 @@ const BOX = 'viewBox="-140 -175 280 300" width="280" height="300"';
 const FLAME_HEIGHT = 230;
 const PLANCHETTE_HEIGHT = 14;
 
-/** The opening, in seconds from the start: when each part begins, and how long it takes. */
+/** Seconds for the stars and the waiting whirl to fade in when the page opens. */
+const APPEAR_SECONDS = 2.6;
+/** Once Play is pressed, in seconds: when each part begins and how long it takes. */
 const OPENING = {
-  sky: [0.1, 3.2],
-  planchette: 0.6,
-  dolly: [0, 6.6],
-  gather: [0.9, 2.1],
-  scatter: [3.5, 1.9],
-  form: [3.4, 3.6],
-  end: 7.4,
+  form: [0.1, 3.7],
+  dolly: [0, 4.4],
+  planchette: 2.9,
+  end: 4.6,
 } as const;
-/** How much further back than its place the camera starts. */
-const DOLLY_FROM = 1.42;
+/** How much further back than its place the camera waits, so the whole whirl fits. */
+const DOLLY_FROM = 1.3;
+/** How far the eye sways, in board units: following the hand, and drifting by itself. */
+const SWAY = { x: 70, y: 45, idle: 16 };
 
 const span = (t: number, [from, length]: readonly [number, number]) => Math.min(1, Math.max(0, (t - from) / length));
 const easeInOut = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2);
@@ -95,15 +98,17 @@ export class BoardView {
   readonly wind = new Wind();
   /** How hard the wind is blowing over the board, 0..1: the sound of it follows this. */
   windLevel = 0;
+  /** Whether to draw at a lower resolution when the device can't keep up. */
+  adaptive = true;
   private readonly stage: Stage;
   private readonly sky: Sky;
+  private readonly space: Space;
   private readonly air: AirParticles;
   private readonly flame = new Flame();
   private readonly smoke = new Motes(160, false);
   private readonly embers = new Motes(80, true);
   private readonly boards = new Map<string, BoardParticles>();
   private board: BoardParticles | null = null;
-  private title: Title | null = null;
   private readonly glow = new Float32Array(MAX_GLYPHS);
   private readonly litUntil = new Float64Array(MAX_GLYPHS);
   private hoverSlot = -1;
@@ -123,8 +128,14 @@ export class BoardView {
   private readonly stirrer: Stirrer = { x: 0, y: 0, vx: 0, vy: 0 };
   private readonly breath: Air = { x: 0, y: 0, gust: 0 };
   /** The opening: how far into it we are, whether the sitters are hurrying it, and what to do once it's over. */
-  private opening: { t: number; hurry: boolean; blown: boolean; done: () => void } | null = null;
-  private skyShown = 1;
+  private opening: { t: number; hurry: boolean; done: () => void } | null = null;
+  /** Whether the board has been called out of the whirl yet. */
+  private begun = false;
+  /** Where the viewer's hand is, from -1 to 1 across the screen, and where the eye is heading. */
+  private readonly hand = { x: 0, y: 0 };
+  /** How long frames are taking, smoothed, and for how many frames in a row they've been too slow. */
+  private frameTime = 1 / 60;
+  private slowFrames = 0;
   private readonly units: HTMLElement;
   private readonly ring: HTMLElement;
   private readonly planchette: HTMLElement;
@@ -140,9 +151,11 @@ export class BoardView {
   ) {
     const roomy = innerWidth * innerHeight > 900_000;
     this.stage = new Stage(canvas);
+    this.stage.dolly = DOLLY_FROM;
     this.sky = new Sky(roomy ? 3600 : 2400);
+    this.space = new Space(roomy);
     this.air = new AirParticles(roomy ? 1100 : 650, 420);
-    this.stage.scene.add(this.sky.heavens, this.sky.nebula, this.air.points, this.flame.group, this.smoke.points, this.embers.points);
+    this.stage.scene.add(this.sky.heavens, ...this.space.layers, this.air.points, this.flame.group, this.smoke.points, this.embers.points);
     this.air.points.renderOrder = 2;
     this.smoke.points.renderOrder = 4;
     this.embers.points.renderOrder = 7;
@@ -181,7 +194,7 @@ export class BoardView {
     if (this.board) this.stage.scene.remove(this.board.points);
     let board = this.boards.get(layout.kind);
     if (!board) {
-      board = buildBoard(layout, this.density());
+      board = buildBoard(layout, this.density(), this.whirl());
       board.points.material.uniforms.uGlow.value = this.glow;
       this.boards.set(layout.kind, board);
     }
@@ -194,6 +207,22 @@ export class BoardView {
     this.light.height = candle.flame;
     this.range = layout.kind === "wide" ? 470 : 360;
     this.wind.setBounds(-200, -layout.height - 200, layout.width + 200, 200);
+    // The moon is high up beyond the board's far top corner, away from the candle.
+    shared.uMoonPos.value.set(layout.width * 1.12, layout.height * 0.3, 700);
+    shared.uMoonRange.value = layout.width * (layout.kind === "wide" ? 1.1 : 1.35);
+  }
+
+  /** The whirl the board's points wait in: around the middle of the screen, as wide as the view. */
+  private whirl(): Whirl {
+    const { view } = this.stage;
+    const w = view.x1 - view.x0;
+    const h = view.y1 - view.y0;
+    return {
+      x: (view.x0 + view.x1) / 2,
+      y: (view.y0 + view.y1) / 2,
+      reach: Math.min(w * 0.5, h * 0.75),
+      tilt: Math.min(0.85, Math.max(0.5, (h / w) * 0.6)),
+    };
   }
 
   /** Throws away the particles and samples the glyphs again, e.g. once the board's font has arrived. */
@@ -216,23 +245,27 @@ export class BoardView {
   }
 
   /**
-   * The opening. Out of the dark the stars come out and the camera drifts in;
-   * the planchette appears; SPIRIT BOARD gathers out of a whirl of dust, holds,
-   * and is torn away by a gust that carries the board in after it, the candle
-   * last. Resolves once it is over. With `calm`, everything is simply there.
+   * Calls the board out of the whirl: every point swirls in to its place, the
+   * middle of the board first and the candle last, while the camera drifts in;
+   * then the planchette appears. Resolves once it is over. With `calm`,
+   * everything is simply there.
    */
   open(calm: boolean): Promise<void> {
+    this.begun = true;
     if (calm) {
-      this.skyShown = 1;
+      this.stage.dolly = 1;
       this.showPlanchette();
       this.form(0.01);
       return Promise.resolve();
     }
-    this.skyShown = 0;
     this.formed = 0;
-    this.title = new Title(this.layout, this.density());
-    this.stage.scene.add(this.title.points);
-    return new Promise((done) => (this.opening = { t: 0, hurry: false, blown: false, done }));
+    return new Promise((done) => (this.opening = { t: 0, hurry: false, done }));
+  }
+
+  /** Where the viewer's hand is on the screen: the eye drifts a little toward it. */
+  look(clientX: number, clientY: number): void {
+    this.hand.x = Math.max(-1, Math.min(1, (clientX / innerWidth) * 2 - 1));
+    this.hand.y = Math.max(-1, Math.min(1, (clientY / innerHeight) * 2 - 1));
   }
 
   /** The sitters are in a hurry: the opening plays out quickly. */
@@ -248,7 +281,7 @@ export class BoardView {
   }
 
   get forming(): boolean {
-    return this.formStart >= 0 || this.opening !== null;
+    return this.formStart >= 0 || this.opening !== null || !this.begun;
   }
 
   /** Lines the scene and the planchette's layer up with the board's box, if the page has moved it. */
@@ -257,9 +290,10 @@ export class BoardView {
     const moved = force || !this.box || box.left !== this.box.left || box.top !== this.box.top || box.width !== this.box.width;
     if (moved) this.box = box;
     if (this.stage.fit(box, this.layout)) {
-      // The dust fills whatever the camera can see.
+      // The dust fills whatever the camera can see, and the stream of space beyond it.
       const { view } = this.stage;
       this.air.setBounds(view.x0 - 100, view.y0 - 100, view.x1 + 100, view.y1 + 100);
+      this.space.place(view, this.stage.distance);
     }
     // While the camera stands back, the planchette's layer shrinks with the board, about the middle of the screen.
     const s = 1 / this.stage.dolly;
@@ -274,7 +308,9 @@ export class BoardView {
   tick(now: number, dt: number): void {
     if (!this.board) return;
     this.time += dt;
+    this.keepUp(dt);
     this.play(dt);
+    this.sway(dt);
     this.fit();
     const { light, wind, breath } = this;
     const candle = candleGeometry(this.layout);
@@ -295,6 +331,7 @@ export class BoardView {
     }
 
     shared.uTime.value = this.time;
+    shared.uAppear.value = Math.min(1, this.time / APPEAR_SECONDS);
     shared.uFocal.value = this.stage.focal;
     shared.uDistance.value = this.stage.distance;
     shared.uDot.value = Math.min(1.6, Math.max(1, this.stage.pixels * 1.1));
@@ -310,7 +347,8 @@ export class BoardView {
     uniforms.uForm.value = this.formed;
     (uniforms.uHole.value as { set(x: number, y: number, z: number): void }).set(this.pos.x, -this.pos.y, 1);
 
-    this.sky.update(this.time, this.skyShown);
+    this.sky.update(this.time);
+    this.space.update(dt, wind.presence * (0.4 + 0.6 * wind.stir));
     this.flame.update(light);
     this.stir(dt);
     // Motes of heat leave the tip of the flame, wherever the wind has bent it.
@@ -339,31 +377,44 @@ export class BoardView {
     this.stage.render(shake * 9 * Math.sin(now * 0.09), shake * 6 * Math.cos(now * 0.13));
   }
 
-  /** Moves the opening on: the sky, the camera, the title and the board forming. */
+  /** Moves the opening on: the board gathering and the camera drifting in. */
   private play(dt: number): void {
     const opening = this.opening;
     if (!opening) return;
-    const t = (opening.t += dt * (opening.hurry ? 6 : 1));
-    this.skyShown = easeInOut(span(t, OPENING.sky));
+    const t = (opening.t += dt * (opening.hurry ? 5 : 1));
     this.stage.dolly = 1 + (DOLLY_FROM - 1) * (1 - easeInOut(span(t, OPENING.dolly)));
     if (t >= OPENING.planchette) this.showPlanchette();
-    this.title?.set(span(t, OPENING.gather), span(t, OPENING.scatter));
     if (this.formStart < 0) this.formed = span(t, OPENING.form);
-    if (!opening.blown && t >= OPENING.scatter[0]) {
-      // The gust that tears the title away and carries the board in.
-      opening.blown = true;
-      this.wind.blast(-150, -this.layout.height * 0.45, 2.4);
-    }
     if (t < OPENING.end) return;
     this.stage.dolly = 1;
-    this.skyShown = 1;
-    if (this.title) {
-      this.stage.scene.remove(this.title.points);
-      this.title.dispose();
-      this.title = null;
-    }
     this.opening = null;
     opening.done();
+  }
+
+  /**
+   * A device that can't keep up gets a lighter picture: after a few seconds of
+   * slow frames the scene is drawn at a lower resolution, a step at a time.
+   */
+  private keepUp(dt: number): void {
+    this.frameTime += (dt - this.frameTime) * 0.05;
+    if (!this.adaptive || !this.begun || this.opening || this.frameTime < 1 / 28) {
+      this.slowFrames = 0;
+      return;
+    }
+    if (++this.slowFrames < 120) return;
+    this.slowFrames = 0;
+    if (this.stage.lighten()) this.frameTime = 1 / 40;
+  }
+
+  /** The eye drifts toward the viewer's hand, and wanders a little by itself, so the dark has depth. */
+  private sway(dt: number): void {
+    const t = this.time;
+    const tx = this.hand.x * SWAY.x + SWAY.idle * fbm1(t * 0.09 + 5);
+    const ty = -this.hand.y * SWAY.y + SWAY.idle * 0.7 * fbm1(t * 0.07 + 9);
+    const k = 1 - Math.exp(-dt / 0.9);
+    const { eye } = this.stage;
+    eye.x += (tx - eye.x) * k;
+    eye.y += (ty - eye.y) * k;
   }
 
   /** Follows the planchette through the air, so it can stir the dust as it goes. */

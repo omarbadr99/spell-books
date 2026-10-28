@@ -36,7 +36,8 @@ await build({
 });
 writeFileSync(
   `${first}/.vc-config.json`,
-  JSON.stringify({ runtime: "nodejs22.x", handler: "index.mjs", launcherType: "Nodejs", shouldAddHelpers: false }, null, 2),
+  // Long enough for a spirit's slowest answer, with its retry.
+  JSON.stringify({ runtime: "nodejs22.x", handler: "index.mjs", launcherType: "Nodejs", shouldAddHelpers: false, maxDuration: 60 }, null, 2),
 );
 for (const route of ROUTES.slice(1)) cpSync(first, `${OUT}/functions/api/${route}.func`, { recursive: true });
 

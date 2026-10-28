@@ -10,6 +10,7 @@ import {
   type BoardLayout,
   type LayoutKind,
 } from "./board/layout";
+import * as api from "./api";
 import { BoardView } from "./board/render";
 import { SoundScape } from "./fx/audio";
 import { Room } from "./fx/room";
@@ -26,13 +27,18 @@ const DWELL_MS = 130;
 /** The board's own lettering, which the particles are sampled from. */
 const BOARD_FONT = "700 80px Cinzel";
 
-// ?speed=4 runs the spirits faster; only honoured in development, for the tests.
-const speed = import.meta.env.DEV ? Math.max(1, Number(new URLSearchParams(location.search).get("speed")) || 1) : 1;
+// In development only: ?speed=4 runs the spirits faster, for the tests, and ?steady keeps the
+// picture at full resolution however slowly frames come, for screenshots.
+const params = new URLSearchParams(location.search);
+const speed = import.meta.env.DEV ? Math.max(1, Number(params.get("speed")) || 1) : 1;
 const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const roomEl = $<HTMLElement>("#room");
 const table = $<HTMLElement>("#table");
+const playEl = $<HTMLButtonElement>("#play");
+/** Whether the sitters have pressed Play; until then the board is a whirl of dust in the dark. */
+let begun = false;
 
 let view: BoardView;
 try {
@@ -41,6 +47,8 @@ try {
   $("#hint").textContent = "This board is drawn with WebGL, which this browser has turned off.";
   throw error;
 }
+
+if (import.meta.env.DEV && params.has("steady")) view.adaptive = false;
 
 const ticker = new Ticker();
 const planchette = new Planchette(view);
@@ -92,6 +100,7 @@ function applyLayout(kind: LayoutKind, first = false): void {
 
 // Fingers on the planchette, which may hang a little over the board's edge.
 addEventListener("pointerdown", (e) => {
+  if (!begun) return;
   // Any touch hurries the opening along.
   view.hurry();
   if (!e.isPrimary || (e.target as Element).closest("#endcard, #mute, #voice")) return;
@@ -106,6 +115,8 @@ addEventListener("pointerdown", (e) => {
 table.addEventListener("pointermove", (e) => {
   if (planchette.held) planchette.dragTo(view.toBoard(e.clientX, e.clientY));
 });
+// The eye drifts a little toward the hand, so the depths slide past the board.
+addEventListener("pointermove", (e) => view.look(e.clientX, e.clientY));
 const letGo = () => {
   if (!planchette.held) return;
   // Letting go with the window on the center sends too, however briefly it was there.
@@ -186,6 +197,8 @@ if (import.meta.env.DEV) {
       ink: () => seance.inkText,
       speaker: () => `${$("#voice").getAttribute("data-speaker")}:${$("#voice-label").textContent}`,
       forming: () => view.forming,
+      // The scene itself, for measuring what each layer costs.
+      view,
     },
   });
 }
@@ -201,10 +214,6 @@ async function start(): Promise<void> {
   requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("preload")));
   ticker.start();
 
-  // The opening: the dark, the planchette alone in it, a title out of dust, and the board
-  // carried in on a gust. The page's words wait until it is over.
-  roomEl.classList.add("intro");
-  void view.open(calm).then(() => roomEl.classList.remove("intro"));
   if (!fontReady) {
     // If the lettering turns up late, sample it again and let the board re-form.
     const late = () => {
@@ -215,7 +224,21 @@ async function start(): Promise<void> {
     };
     document.fonts.addEventListener("loadingdone", late);
   }
-  await seance.boot();
+  // Meanwhile, find out whether this device already knows the word.
+  const booted = seance.boot();
+
+  // The board waits in space as a whirl of dust until the sitters press Play. Then the
+  // sound comes up, the preview asks to use Claude, and the dust gathers into the board.
+  await new Promise<void>((resolve) => playEl.addEventListener("click", () => resolve(), { once: true }));
+  begun = true;
+  playEl.classList.add("pressed");
+  sound.unlock();
+  sound.awaken();
+  void api.prepare();
+  await view.open(calm);
+  playEl.hidden = true;
+  roomEl.classList.remove("intro");
+  await booted;
 }
 
 void start();

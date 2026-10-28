@@ -217,6 +217,39 @@ export class Possessor {
     return this.glide(this.view.layout.rest, { speed: this.style.speed * 0.6, overshoot: 0 });
   }
 
+  /**
+   * The spirit has the planchette but hasn't begun: it rests under the fingers,
+   * never quite still, creeping a hair this way and that until the returned
+   * release() is called.
+   */
+  hold(): () => Promise<void> {
+    this.sync();
+    const home = { ...this.aim };
+    let released = false;
+    const start = performance.now();
+    const done = new Promise<void>((resolve) => {
+      this.ticker.add((now) => {
+        if (released) {
+          resolve();
+          return false;
+        }
+        const t = ((now - start) * this.speedFactor) / 1000;
+        const settle = Math.min(1, t / 1.5);
+        const creep = unsteadiness(t * 0.3 + 3.3);
+        this.aim = { x: home.x + creep.x * 7 * settle, y: home.y + creep.y * 5 * settle };
+        this.stir = 0.35 * settle;
+        this.show(now);
+        return true;
+      });
+    });
+    return () => {
+      released = true;
+      return done.then(() => {
+        this.stir = 0;
+      });
+    };
+  }
+
   /** The planchette stirs as a spirit takes hold of it: a small slide one way, then back. */
   async jolt(): Promise<void> {
     this.sync();

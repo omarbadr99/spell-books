@@ -83,10 +83,12 @@ async function flickHome(page: Page) {
   await page.mouse.up();
 }
 
-/** A touch hurries the opening along; then wait for the board to settle where it belongs. */
+/** Presses Play, hurries the board's gathering along with a touch, and waits for it to settle. */
 async function skipOpening(page: Page) {
+  await page.getByRole("button", { name: "Begin the séance" }).click();
   await page.mouse.click(5, 5);
   await page.waitForFunction(() => !window.__board.forming(), null, { timeout: 30_000 });
+  await expect(page.locator("#play")).toBeHidden();
 }
 
 test("a séance from the lock to goodbye", async ({ page }, testInfo) => {
@@ -170,4 +172,18 @@ test("a device that already knows the word skips the lock", async ({ page, conte
   expect(res.ok()).toBe(true);
   await page.goto(`/?speed=${SPEED}`);
   await phaseBecomes(page, "dormant");
+});
+
+test("the board waits in space until Play is pressed", async ({ page }) => {
+  await page.goto(`/?speed=${SPEED}`);
+  await phaseBecomes(page, "locked", "dormant");
+  await expect(page.locator("#play")).toBeVisible();
+  await expect(page.locator("#planchette.here")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__board.forming())).toBe(true);
+  // Touching the dark before Play does nothing.
+  await page.mouse.click(200, 200);
+  expect(await page.evaluate(() => window.__board.forming())).toBe(true);
+  await skipOpening(page);
+  await expect(page.locator("#planchette.here")).toHaveCount(1);
+  await expect(page.locator("#room.intro")).toHaveCount(0);
 });

@@ -9,7 +9,7 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body class="preload">
-    <main id="room" class="phase-booting">
+    <main id="room" class="phase-booting intro">
       <canvas id="scene" aria-hidden="true"></canvas>
       <div class="vignette" aria-hidden="true"></div>
 
@@ -24,6 +24,11 @@
         <div id="table" role="img" aria-label="A talking board made of light, with a planchette"></div>
         <p id="hint"></p>
       </div>
+
+      <button id="play" type="button" aria-label="Begin the séance">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.8v12.4L18.6 12z" /></svg>
+        <span class="play-label" aria-hidden="true">Begin</span>
+      </button>
 
       <button id="mute" type="button" aria-label="Mute sound" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true">

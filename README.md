@@ -1,19 +1,19 @@
 # Spirit Board
 
-A talking board made of light, where AI spirits answer. It opens in the dark:
-the stars come out, the planchette appears, and SPIRIT BOARD gathers out of a
-whirl of dust until a gust tears it away and carries the board in after it:
-letters, numbers and a candle, all made of particles. Greet the spirits and the
-candle lights, a breeze gets up and one of four spirits arrives. You spell by
-dragging the planchette from letter to letter, then bring it back to the center
-of the board. Your message dissolves, the planchette pulls away from your
-fingers, and the spirit spells its reply on its own, usually in a single word,
-while its candle flares and the wind rises. The idea comes from Maxime Rivest's
-Tom Riddle diary for the reMarkable.
+A talking board made of light, where AI spirits answer. It opens in space:
+dust flowing past at every depth, a slow whirl of it in the middle, and a
+**Begin** button. Press it and the sound comes up as the whirl gathers into the
+board: letters, numbers and a candle, all made of particles. Greet the spirits
+and the candle lights, a breeze gets up and one of four spirits arrives. You
+spell by dragging the planchette from letter to letter, then bring it back to
+the center of the board. Your message dissolves, the planchette pulls away from
+your fingers, and the spirit spells its reply on its own, usually in a single
+word, while its candle flares and the wind tears grains off the letters. The
+idea comes from Maxime Rivest's Tom Riddle diary for the reMarkable.
 
 <p align="center">
-  <img src="docs/board-desktop.jpg" alt="The board on a laptop as Fable answers YES: its orange candle flares on the left, the flame bent over by the wind and a wisp of heat trailing off it, the letters lit gold near the flame and silver further away" width="640">
-  <img src="docs/board-phone.jpg" alt="The board on a phone before the candle is lit, with HI spelled as the message" width="200">
+  <img src="docs/board-desktop.jpg" alt="The board on a laptop as Opus answers YES: its purple candle flares on the left and lights the nearest letters purple, the letters further off dim and uneven, and streams of grains blowing off YES and NO in the wind" width="640">
+  <img src="docs/board-phone.jpg" alt="A phone before the séance: a slow whirl of dust in the dark around a ring with a play mark and the word Begin" width="200">
 </p>
 
 There is no typing anywhere. Even the word that unlocks the board is spelled
@@ -21,6 +21,10 @@ with the planchette.
 
 ## How to play
 
+- **Press Begin.** The board waits in space as a whirl of dust until you do.
+  Pressing it turns the sound on (browsers only allow sound after a touch),
+  and the dust gathers into the board. Touching again while it gathers hurries
+  it along.
 - **Spell with the planchette.** Drag it and pause with its window on a
   letter. A brief pause is enough: the letter is added to your message at the
   top. Letters run together the way they do on a real board
@@ -33,20 +37,20 @@ with the planchette.
 - **Unlock the board.** A new device starts locked. Spell the secret word and
   bring the planchette back to the center. A wrong word sends it to **NO**.
   Each device stays unlocked for 30 days.
-- **Greet the spirits to start.** The candle is out and the board is white
-  light on black. Spell a greeting and return to the center: `HI`, `HELLO`,
-  `HEY`, `ISANYONETHERE`, `WHOSTHERE`, or a hello in another language (`HOLA`,
-  `SALAM`, `BONJOUR`...). Anything that isn't a greeting fades into the dark
-  board and nothing comes. A greeting lights the candle, a breeze gets up, and
-  a spirit arrives and greets you back in a way that starts a conversation
-  (`WHO CALLS`, `HELLO STRANGER`). Touching the screen during the opening
-  hurries it along.
+- **Greet the spirits to start.** The candle is out and only faint moonlight
+  falls on the board. Spell a greeting and return to the center: `HI`,
+  `HELLO`, `HEY`, `ISANYONETHERE`, `WHOSTHERE`, or a hello in another language
+  (`HOLA`, `SALAM`, `BONJOUR`...). Anything that isn't a greeting fades into
+  the dark board and nothing comes. A greeting lights the candle, a breeze gets
+  up, and a spirit arrives and greets you back in a way that starts a
+  conversation (`WHO CALLS`, `HELLO STRANGER`).
 - **Ask anything.** Spirits answer in a word when they can, and in two or three
   only when one won't do. A yes-or-no question gets a bare **YES** or **NO**.
   With nothing spelled, resting on **YES** or **NO** answers the spirit's own
   question straight away. Ask `WHOAREYOU` and its words appear under its name
-  from then on. While a spirit thinks, the planchette simply waits; then it
-  moves.
+  from then on. While a spirit thinks, the planchette rests under your
+  fingers, stirring a little; then it moves. If a spirit's own model is slow to
+  answer, a quick one answers for it, so the séance never stalls.
 - **End the séance.** Rest the window on **GOODBYE** and the spirit leaves
   without a word: a last gust blows the candle out. Spirits also leave on their
   own if you're rude. An end card shows who you met, ready to be the last shot
@@ -68,24 +72,32 @@ Each also has its own sound and its own way of moving the planchette: Haiku is
 light and exact, Sonnet swings wide, Fable darts past the letters, and Opus is
 slow and heavy.
 
-## Light and wind
+## Light, wind and space
 
-The candle is the only light on the board, and the air in the room is one
-simulation that everything shares.
+Everything on the board is lit by two lights, and moved by one wind.
 
-- **Wind.** Still until a spirit comes; then a breeze that wanders a little in
-  strength and direction, with gusts that roll across the board from the
-  candle's side and eddies the air carries along with it. Dust in the air
-  drifts with it and glints as it passes near the flame. Heat and smoke rise
-  off the flame and bend away downwind. The letters lean as each gust passes,
-  a moment late, and swing back a little after it, while staying readable. The
-  planchette stirs the air it moves through.
-- **Light.** The flame flickers and now and then gutters, more often in a
-  draught. Gusts bend it over and dim it. Its light falls off with distance,
-  and the edge of each stroke that faces the flame catches more of it. The
-  planchette throws a soft shadow across the board, away from the candle.
+- **Light.** Faint, cold moonlight falls from high beyond the board's far top
+  corner, so the letters are brighter toward **NO** and fade toward the candle's
+  side. The candle's warm light, in its spirit's color, falls off with
+  distance, so only the letters near it glow. Each stroke catches more light
+  on the edge facing a light, and no two grains catch it alike: most are dull,
+  a few glint, and each letter is a little different. The flame flickers,
+  gutters now and then, bends and dims in gusts, and the planchette throws a
+  soft shadow away from it.
+- **Wind.** Still until a spirit comes; then a breeze that wanders, gusts
+  that roll across the board from the candle's side, and eddies carried along
+  with them. Letters lean as each gust passes and swing back after. The
+  loosest grains lift off the strokes and stream away downwind, more of them
+  the harder it blows, and come back to go again, so the letters stay
+  readable. Dust in the air drifts with the wind and glints near the flame,
+  and heat and smoke rise off the flame and bend away downwind.
 - **When a spirit speaks,** the flame flares up taller and whiter, its light
   reaches further, and the wind rises with it. You can hear the wind too.
+- **Space.** Behind the board, dust flows past at three depths: a far stream
+  that gathers into faint clouds, a nearer drift, and a few motes so close to
+  your eye that they're out of focus. The view sways a little toward your
+  pointer (and by itself on a phone), so the layers slide past one another
+  while the board stays put.
 
 ## Run it on your computer
 
@@ -197,6 +209,9 @@ Two more things to know:
   on: if Claude's safety checks decline a question, another model answers it
   in the same call. Haiku has no fallback, so a declined question makes it
   spell `I CANNOT SAY`.
+- **Slow answers.** If a spirit's own model hasn't answered within 12 seconds,
+  or Claude is overloaded, Haiku answers for it instead, so a séance never
+  stalls. In the claude.ai preview the wait is 9 seconds.
 - **Fable and data retention.** Claude Fable 5.1 needs your Anthropic
   organization to keep data for 30 days. If your organization has zero data
   retention, Fable's requests fail and that spirit falls silent; the server
@@ -257,12 +272,16 @@ is complete and that its lines fit on the board.
     gust passes and springs back after.
   - The candle's light (`src/scene/light.ts`) flickers on noise rather than
     on a loop, gutters, bends with the wind and flares while a spirit speaks.
-    The shaders light every point with an inverse-square fall-off, and more
-    where its stroke's edge faces the flame. The flame, the glow and the
-    planchette are soft gradients, not particles.
+    The shaders light every point by the moon and the candle, each with an
+    inverse-square fall-off and more where its stroke's edge faces the light.
+    The flame, the glow and the planchette are soft gradients, not particles.
   - Behind it all, stars drift and the sky turns very slowly
-    (`src/scene/sky.ts`). The opening's title is its own set of particles
-    (`src/scene/title.ts`), and the camera drifts in while it plays.
+    (`src/scene/sky.ts`), and dust flows through space at three depths
+    (`src/scene/space.ts`), computed in the shader so it costs almost nothing.
+  - The camera sways toward the pointer with its lens shifted to match, so the
+    board's plane never moves while nearer and farther layers slide past it
+    (`src/scene/stage.ts`). On a device that can't keep up, the scene drops its
+    resolution a step at a time instead of stuttering.
   - The page's own layout decides where the board sits; the camera lines the
     particles up with it (`src/scene/stage.ts`), and the planchette is drawn
     over them as plain HTML.

@@ -29,6 +29,7 @@ export class SoundScape {
   private signatureTimer = 0;
   private lastScrape = 0;
   private lastWind = 0;
+  private room: GainNode | null = null;
   private root = 147;
 
   /** Browsers only allow sound after a gesture, so call this from one. */
@@ -176,6 +177,53 @@ export class SoundScape {
     src.connect(low).connect(g).connect(this.master);
     src.start(t);
     src.stop(t + 1);
+  }
+
+  /**
+   * Play is pressed: a low chord swells and air rushes in as the board gathers
+   * out of the dark, a shimmer as it lands, and then the room's quiet tone stays.
+   */
+  awaken(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    for (const [f, peak] of [
+      [55, 0.09],
+      [82.5, 0.05],
+      [110, 0.035],
+      [164.8, 0.018],
+    ]) {
+      this.tone(f, t, 2.6, "sine", peak, 1.6);
+    }
+    const air = this.noiseSource();
+    const low = this.filter("lowpass", 160, 0.9);
+    low.frequency.setValueAtTime(160, t);
+    low.frequency.exponentialRampToValueAtTime(2600, t + 3.1);
+    air.connect(low).connect(this.envelope(t, 2.3, 0.06, 1.7)).connect(this.master);
+    air.start(t, Math.random());
+    air.stop(t + 4.3);
+    [1, 5 / 4, 3 / 2, 2, 5 / 2].forEach((k, i) => this.tone(392 * k, t + 3.1 + i * 0.08, 1.5, "sine", 0.011));
+    this.roomTone();
+  }
+
+  /** The room, very quietly: low air, and a hum almost too deep to hear. */
+  private roomTone(): void {
+    if (this.room) return;
+    const ctx = this.ctx!;
+    this.room = ctx.createGain();
+    this.room.gain.value = 0;
+    this.room.gain.setTargetAtTime(1, ctx.currentTime + 2, 3);
+    this.room.connect(this.master);
+    const air = this.noiseSource();
+    const level = ctx.createGain();
+    level.gain.value = 0.022;
+    air.connect(this.filter("lowpass", 300, 0.7)).connect(level).connect(this.room);
+    air.start(0, 1.3);
+    const hum = ctx.createOscillator();
+    hum.frequency.value = 41;
+    const humLevel = ctx.createGain();
+    humLevel.gain.value = 0.02;
+    hum.connect(humLevel).connect(this.room);
+    hum.start();
   }
 
   /** The board wakes after the right word. */

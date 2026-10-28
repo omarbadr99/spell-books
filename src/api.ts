@@ -22,12 +22,16 @@ async function call(path: string, body?: unknown): Promise<Response | null> {
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: "same-origin",
-      signal: AbortSignal.timeout(25_000),
+      // The server gives up on Claude well before this.
+      signal: AbortSignal.timeout(32_000),
     });
   } catch {
     return null;
   }
 }
+
+/** Anything to settle before the séance starts. The Worker needs nothing; the artifact build asks for Claude here. */
+export async function prepare(): Promise<void> {}
 
 export async function checkSeat(): Promise<SeatState> {
   const res = await call("/api/me");

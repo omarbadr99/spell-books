@@ -7,6 +7,8 @@ import { MAX_GUSTS } from "./wind";
 
 export const shared = {
   uTime: { value: 0 },
+  /** 0 before the page has opened, 1 once everything has faded in. */
+  uAppear: { value: 0 },
   /** Device pixels per world unit at a distance of one unit: sizes things that scale with the board. */
   uFocal: { value: 1 },
   /** How far the camera stands from the board's plane. */
@@ -18,6 +20,10 @@ export const shared = {
   uLightPower: { value: 0 },
   /** Board units at which the light has fallen to half. */
   uLightRange: { value: 420 },
+  /** Faint moonlight from high beyond the board's far corner: where it comes from, how strong, how far it carries. */
+  uMoonPos: { value: new Vector3() },
+  uMoonPower: { value: 1 },
+  uMoonRange: { value: 1800 },
   /** The wind's direction (xy), its mean speed in breezes (z) and how present the spirit is (w). */
   uWind: { value: new Vector4(1, 0, 0, 0) },
   /** How far the air has carried its eddies. */
