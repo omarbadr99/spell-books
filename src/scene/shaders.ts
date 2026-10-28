@@ -2,6 +2,8 @@
 // on top of each other, every one is lit by the same candle, and everything that
 // moves in the air moves with the same wind (see wind.ts).
 
+import { BEND } from "./bend";
+
 /** The candle's light, falling off with the square of the distance. */
 const CANDLELIGHT = /* glsl */ `
 uniform vec3 uLightPos;
@@ -80,28 +82,32 @@ vec2 rotate2(vec2 v, float a) {
 `;
 
 /**
- * The letters, numbers, words and the candle.
+ * The board's points, in every picture they make.
  *
- * When the page opens every point is loose dust in the dark, and the dust drifts
- * together into the glyphs, one after another. They float there, deep in the
- * dark or close to the eye, tipped and turned, bobbing and slowly turning, their
- * loosest grains streaming off them on the current. When the séance begins each
- * glyph swings down into its place on the board, the middle first, and flares as
- * it lands; the candle gathers last of all.
+ * When the page opens they are loose dust in the dark (0). The dust flies
+ * together into the word START, and what isn't START swirls round it in a
+ * tilted disc, its near side passing close to the eye (1). When the séance
+ * begins, START bursts and every point flies out past the eye and down into
+ * its place on the board, the middle first (2). At the end the board breaks up
+ * again into the farewell: the spirit reaching out, the wind, and the ground
+ * rolling away underfoot (3). Points fly from one picture to the next along a
+ * curve that swings out and toward the eye, each setting off at its own moment.
  *
- * Once home a point lives in the wind: it leans as gusts pass and swings back,
- * and the loosest grains lift off the strokes and stream away downwind, fading
- * as they go, more of them the harder it blows.
- *
- * Two lights fall on it: faint, cold moonlight from high beyond the board's
- * far corner, and the candle's warm light, both falling off with distance and
- * catching most on the stroke edges that face them. No two grains catch the
- * light alike.
+ * On the board a point lives in the wind: it leans as gusts pass and swings
+ * back, and the loosest grains lift off the strokes and stream away downwind,
+ * fading as they go, more of them the harder it blows. Two lights fall on it:
+ * faint, cold moonlight from high beyond the board's far corner, and the
+ * candle's warm light, both falling off with distance and catching most on the
+ * stroke edges that face them. No two grains catch the light alike.
  */
 export const BOARD_VERTEX = /* glsl */ `
 uniform float uTime;
-uniform float uGather;
-uniform float uForm;
+uniform float uFrom;    // the picture the points are leaving
+uniform float uTo;      // the one they are making
+uniform float uMorph;   // how far from one to the other, 0..1
+uniform vec3 uPath;     // how wide they scatter on the way (x, half-heights of the view), how near the eye they fly (y, camera distances), and whether they set off from the board's middle outward (z = 1) or at random (0)
+uniform float uNear;    // how near the planchette's glass is to START, 0..1
+uniform float uFeet;    // where the figures stand in the farewell, in half-heights of the view
 uniform float uAppear;
 uniform float uFocal;
 uniform float uDistance;
@@ -111,12 +117,11 @@ uniform vec3 uHole;
 uniform vec3 uMoonPos;
 uniform float uMoonPower;
 uniform float uMoonRange;
-attribute vec3 aStart;   // where it drifts as dust before it gathers, from where its glyph floats
-attribute vec4 aSeed;    // when it gathers (x), and three random numbers
-attribute vec4 aInfo;    // its glyph's slot (-1 for the candle), its kind, and which way its stroke's edge faces
-attribute vec3 aCenter;  // its glyph's middle on the board, and when the glyph comes down (z)
-attribute vec4 aPose;    // where its glyph floats, from its place (xyz), and how far it is turned in its plane (w)
-attribute vec2 aTilt;    // and how far it is tipped back (x) and turned aside (y)
+attribute vec3 aStart;  // where it drifts as dust, in view units (see inView)
+attribute vec4 aWord;   // its place in START (w = 0), or in the swirl round it (w = 1: angle, radius, height)
+attribute vec4 aEnd;    // its place in the farewell: in the spirit (w = 0), the wind (1: along, height, depth) or the ground (2: across, how far off)
+attribute vec4 aSeed;
+attribute vec4 aInfo;   // its glyph's slot (-1 for the candle), its kind, and which way its stroke's edge faces
 varying vec3 vColor;
 varying float vAlpha;
 varying float vSoft;
@@ -124,66 +129,98 @@ ${CANDLELIGHT}
 ${NOISE}
 ${WIND}
 ${ROTATE}
+${BEND}
+
+/** Where a point is in a picture and how it shows there; size is a speck's size before perspective. */
+struct Look {
+  vec3 p;
+  vec3 color;
+  float alpha;
+  float size;
+};
+
+bool isDust;
+bool isHaze;
+float twinkle;
 
 /** A fixed random number for each glyph, so no two letters catch the light quite alike. */
 float glyphHash(float g) {
   return fract(sin(g * 12.9898 + 4.1) * 43758.5453);
 }
 
-/** Turns v by a.x about the x axis, then a.y about y, then a.z about z. */
-vec3 turn3(vec3 v, vec3 a) {
-  v.yz = rotate2(v.yz, a.x);
-  v.xz = rotate2(v.xz, a.y);
-  v.xy = rotate2(v.xy, a.z);
-  return v;
+/**
+ * From view units to the world: x and y in half-heights of the view about its
+ * middle, z in camera distances toward the eye. Whatever its depth, a point
+ * shows at the same place on the screen.
+ */
+vec3 inView(vec3 v) {
+  float z = v.z * uDistance;
+  return vec3(uView.xy + v.xy * uView.w * (uDistance - z) / uDistance, z);
 }
 
-void main() {
+/** Each speck's own faint color, out in the dark. */
+vec3 adrift() {
+  return (aSeed.w < 0.5 ? mix(vec3(0.5, 0.6, 1.0), vec3(0.88, 0.9, 1.0), aSeed.w * 2.0)
+    : mix(vec3(0.78, 0.62, 1.0), vec3(1.0, 0.82, 0.7), smoothstep(0.85, 1.0, aSeed.w))) * (0.45 + 0.75 * aSeed.z) * twinkle;
+}
+
+/** Loose dust, drifting. */
+Look loose() {
+  vec3 q = vec3(aStart.xy * 1.7, uTime * 0.05 + aSeed.w * 3.0);
+  Look l;
+  l.p = inView(aStart + vec3(0.05 * vec2(vnoise(q), vnoise(q + vec3(9.2, 4.1, 0.0))), 0.0));
+  l.color = adrift();
+  l.alpha = isHaze ? 0.0 : 0.16 + 0.42 * aSeed.z;
+  l.size = 0.9 + aSeed.z * 1.4;
+  return l;
+}
+
+/** START, breathing and stirring as the glass comes near, and the dust swirling round it. */
+Look startWord() {
+  Look l;
+  if (aWord.w < 0.5) {
+    float breathe = 0.5 + 0.5 * sin(uTime * 1.6 - aWord.x * 2.5);
+    vec3 v = aWord.xyz;
+    v.xy += (0.002 + 0.012 * uNear) * vec2(sin(uTime * (9.0 + 6.0 * aSeed.y) + aSeed.z * 40.0), cos(uTime * (8.0 + 7.0 * aSeed.z) + aSeed.y * 40.0));
+    l.p = inView(v);
+    vec3 silver = mix(vec3(0.7, 0.76, 0.94), vec3(0.97, 0.98, 1.0), aSeed.w) * (0.6 + 0.6 * aSeed.z * aSeed.z);
+    l.color = silver * twinkle * (0.85 + 0.3 * breathe + 0.9 * uNear);
+    l.alpha = isHaze ? 0.04 + 0.04 * breathe + 0.1 * uNear : (isDust ? 0.45 : 0.85) * (0.6 + 0.2 * breathe + 0.3 * uNear);
+    l.size = 0.9 + aSeed.z * 1.5;
+    return l;
+  }
+  // A disc of dust, turning faster toward its middle, tipped so its near side passes below START and close to the eye.
+  float r = aWord.y;
+  float a = aWord.x + uTime * 0.09 / pow(r, 1.5);
+  vec3 disc = vec3(cos(a) * r, aWord.z, sin(a) * r);
+  disc.yz = rotate2(disc.yz, 0.36);
+  vec3 q = vec3(disc.xz * 1.3, uTime * 0.06);
+  disc.y += 0.05 * vnoise(q);
+  l.p = vec3(uView.xy + disc.xy * uView.w, disc.z * uView.w);
+  float near = clamp(l.p.z / uDistance, -1.0, 1.0);
+  // Thickest along two arms that wind out from START.
+  float arms = 0.35 + 0.65 * pow(0.5 + 0.5 * cos(2.0 * (a - 3.2 * r)), 3.0);
+  l.color = adrift() * (1.0 + 0.6 * max(near, 0.0));
+  l.alpha = isHaze ? 0.0 : (0.2 + 0.6 * aSeed.z) * arms * (0.75 + 0.6 * max(near, 0.0));
+  l.size = 0.85 + aSeed.z * 1.3;
+  return l;
+}
+
+/** On the board: curved round the sitters, in the wind and the light. */
+Look onBoard() {
   float slot = aInfo.x;
   bool candle = slot < -0.5;
-  bool dust = aInfo.y > 1.5 && aInfo.y < 2.5;
-  bool haze = aInfo.y > 2.5;
-  float ph = glyphHash(slot) * 6.283;
+  vec3 p = bend(position);
 
-  // Coming down: each glyph swings from where it floats into its place, the
-  // middle of the board first, its grains a moment apart.
-  float fall = (uForm - aCenter.z * 0.5 - aSeed.y * 0.04) / 0.46;
-  float f = clamp(fall, 0.0, 1.0);
-  float aloft = candle ? 0.0 : 1.0 - (f < 0.5 ? 4.0 * f * f * f : 1.0 - pow(2.0 - 2.0 * f, 3.0) * 0.5);
-  vec3 p = position;
-  vec3 tilt = vec3(0.0);
-  if (aloft > 0.0) {
-    // Afloat, each glyph bobs and turns a little, slowly, on its own.
-    tilt = (vec3(aTilt, aPose.w) + vec3(0.08 * sin(uTime * 0.29 + ph), 0.08 * sin(uTime * 0.23 + ph * 1.7), 0.05 * sin(uTime * 0.19 + ph * 2.3))) * aloft;
-    vec3 bob = vec3(16.0 * sin(uTime * 0.37 + ph), 12.0 * cos(uTime * 0.31 + ph * 1.3), 0.03 * uDistance * sin(uTime * 0.21 + ph * 0.7));
-    p = vec3(aCenter.xy, 0.0) + (aPose.xyz + bob) * aloft + turn3(position - vec3(aCenter.xy, 0.0), tilt);
-  }
-
-  // Before that, loose dust: when the page opens it drifts together into the
-  // glyphs one after another, spiralling in. The candle gathers as the board comes down.
-  float gathering = candle ? (uForm - 0.5 - aSeed.x * 0.3) / 0.32 : (uGather - aSeed.x * 0.68) / 0.32;
-  float g = clamp(gathering, 0.0, 1.0);
-  float e = 1.0 - pow(1.0 - g, 3.0);
-  if (e < 1.0) {
-    vec3 qw = vec3(aStart.xy * 0.004, uTime * 0.12 + aSeed.w * 3.0);
-    vec3 off = aStart + vec3(46.0 * vec2(vnoise(qw), vnoise(qw + vec3(9.2, 4.1, 0.0))), 0.0);
-    off.xy = rotate2(off.xy, (1.0 - e) * (aSeed.w - 0.5) * 2.6);
-    p += off * (1.0 - e);
-  }
-  float arriving = exp(-pow((gathering - 1.0) / 0.07, 2.0));
-  float landing = candle ? arriving : exp(-pow((fall - 1.0) / 0.05, 2.0));
-  // How much the point is part of the board, at home on it.
-  float home = candle ? e : 1.0 - aloft;
-
-  // The wind. Every point is held to its place like a thread sewn into cloth: it
-  // leans with the air pushing on it, a moment late, and swings back a little once
-  // a gust has gone by. Loose dust gives the most; the strokes themselves barely.
-  float give = home * (dust ? 15.0 : (haze ? 2.2 : (aInfo.y > 0.5 ? 3.0 : 1.7)));
-  float now = gusting(p.xy, 0.12);
-  float push = uWind.z * 0.3 + now - 0.4 * gusting(p.xy, 0.75);
+  // The wind, reckoned where the point sits on the flat board, as the room's air is. Every point is held to
+  // its place like a thread sewn into cloth: it leans with the air pushing on it, a moment late, and swings
+  // back a little once a gust has gone by. Loose dust gives the most; the strokes themselves barely.
+  float give = isDust ? 15.0 : (isHaze ? 2.2 : (aInfo.y > 0.5 ? 3.0 : 1.7));
+  float now = gusting(position.xy, 0.12);
+  float push = uWind.z * 0.3 + now - 0.4 * gusting(position.xy, 0.75);
   vec2 eddy = vec2(0.0);
   if (uWind.w + now > 0.002) {
-    vec3 q = vec3((p.xy - uDrift) * 0.0045 + (dust ? aSeed.yz * 3.0 : vec2(0.0)), uTime * 0.3);
+    vec3 q = vec3((position.xy - uDrift) * 0.0045 + (isDust ? aSeed.yz * 3.0 : vec2(0.0)), uTime * 0.3);
     eddy = vec2(vnoise(q), vnoise(q + vec3(19.1, 7.3, 3.7)));
   }
   p.xy += give * (uWind.xy * push * 1.7 + eddy * (0.2 * uWind.w + 0.9 * now) * 1.5);
@@ -192,156 +229,145 @@ void main() {
   // And a shimmer that never stops.
   p.xy += 0.45 * vec2(sin(uTime * 2.3 + aSeed.x * 53.0), cos(uTime * 1.9 + aSeed.y * 47.0));
 
-  // Shedding. Each grain has its own hold on the stroke; when the air blows harder
-  // than that, it lifts off, streams away downwind in the eddies, fades, and comes
-  // back home unseen to go again. Stray dust goes in a breeze; the strokes need a gust.
-  // While the glyphs float, their loosest grains stream off on the current anyway.
+  // Shedding. Each grain has its own hold on the stroke; when the air blows harder than that, it lifts off,
+  // streams away downwind in the eddies, fades, and comes back home unseen to go again. Stray dust goes in
+  // a breeze; the strokes need a gust.
   float blow = uWind.w * (0.25 + 0.3 * uWind.z) + 1.1 * now;
-  float hold = dust ? -0.35 + 1.2 * aSeed.w : (haze ? 99.0 : 0.15 + 6.0 * aSeed.w);
+  float hold = isDust ? -0.35 + 1.2 * aSeed.w : (isHaze ? 99.0 : 0.15 + 6.0 * aSeed.w);
   // The candle's wax holds on tighter than the letters' dust.
   if (candle) hold += 0.9;
-  float shed = home * smoothstep(hold, hold + 0.45, blow);
-  float drifting = haze ? 0.0 : aloft * e * step(0.7, fract(aSeed.y * 13.7));
-  float stream = max(shed, drifting);
+  float shed = smoothstep(hold, hold + 0.45, blow);
   float u = fract(uTime * (0.14 + 0.2 * aSeed.y) + aSeed.z * 7.0);
-  if (stream > 0.001) {
+  if (shed > 0.001) {
     vec3 qs = vec3(position.xy * 0.006, uTime * 0.25 + aSeed.x * 5.0);
     vec2 swirl = vec2(vnoise(qs), vnoise(qs + vec3(7.7, 2.9, 1.1)));
-    vec2 away = normalize(mix(uWind.xy, vec2(0.96, 0.28), drifting / stream));
-    p.xy += stream * (away * (120.0 + 380.0 * aSeed.y) * pow(u, 1.2) + swirl * 70.0 * u + vec2(0.0, 36.0 * u));
-    p.z += stream * 80.0 * u * (aSeed.x - 0.3);
+    p.xy += shed * (uWind.xy * (120.0 + 380.0 * aSeed.y) * pow(u, 1.2) + swirl * 70.0 * u + vec2(0.0, 36.0 * u));
+    p.z += shed * 80.0 * u * (aSeed.x - 0.3);
   }
-  float seen = mix(1.0, smoothstep(0.0, 0.04, u) * (1.0 - smoothstep(0.6, 1.0, u)), stream);
+  float seen = mix(1.0, smoothstep(0.0, 0.04, u) * (1.0 - smoothstep(0.6, 1.0, u)), shed);
 
-  // The light. A floating glyph's edges turn with it.
+  // The light.
   vec2 normal = aInfo.zw;
-  if (aloft > 0.0) normal = turn3(vec3(normal, 0.0), tilt).xy;
   float glow = candle ? 0.0 : uGlow[int(slot + 0.5)];
   float under = uHole.z * smoothstep(80.0, 20.0, distance(p.xy, uHole.xy));
   vec2 toFlame = uLightPos.xy - p.xy;
   float facing = dot(normal, toFlame / max(length(toFlame), 1.0));
   float light = candlelight(p) * (1.0 + 1.2 * max(facing, 0.0) - 0.5 * max(-facing, 0.0));
-  // Afloat, a glyph is lit as brightly as it will be on the board, wherever it is.
-  vec3 toMoon = uMoonPos - mix(p, position, aloft);
+  vec3 toMoon = uMoonPos - p;
   float moonFacing = dot(normal, normalize(toMoon.xy));
   float moon = uMoonPower / (1.0 + dot(toMoon, toMoon) / (uMoonRange * uMoonRange));
   moon *= 1.0 + 0.7 * max(moonFacing, 0.0) - 0.35 * max(-moonFacing, 0.0);
-  // And brighter still, catching the moon full on its face as it turns toward it.
-  if (aloft > 0.0) {
-    vec3 face = turn3(vec3(0.0, 0.0, 1.0), tilt);
-    moon *= 1.0 + aloft * (0.9 + 2.4 * pow(max(dot(face, normalize(toMoon)), 0.0), 4.0));
-  }
   // Some grains glint, most are dull, and each letter is a little different.
   float grain = (0.4 + 1.2 * aSeed.z * aSeed.z) * (0.8 + 0.4 * glyphHash(slot));
-  float twinkle = 0.82 + 0.18 * sin(uTime * (1.1 + aSeed.y * 2.4) + aSeed.z * 41.0);
   // Moonlight is cold: blue-grey to silver, with now and then a warmer speck.
   vec3 cold = mix(vec3(0.5, 0.6, 0.82), vec3(0.84, 0.87, 0.95), aSeed.w);
   if (fract(aSeed.y * 7.31) > 0.94) cold = vec3(0.86, 0.78, 0.68);
   float moonlit = moon * grain * twinkle;
   vec3 lit = cold * moonlit + uLightColor * light * (0.85 + 0.35 * grain);
   vec3 shine = mix(vec3(0.92, 0.94, 1.0), uLightColor * 1.25, clamp(light, 0.0, 0.9));
-  // Loose in the dark, each speck has its own faint color.
-  vec3 adrift = (aSeed.w < 0.5 ? mix(vec3(0.5, 0.6, 1.0), vec3(0.88, 0.9, 1.0), aSeed.w * 2.0)
-    : mix(vec3(0.78, 0.62, 1.0), vec3(1.0, 0.82, 0.7), smoothstep(0.85, 1.0, aSeed.w))) * (0.45 + 0.75 * aSeed.z) * twinkle;
   // Grains caught by the wind glint as they leave.
-  lit *= 1.0 + 0.7 * stream * (1.0 - u);
-  vColor = mix(adrift, lit, e) + shine * (glow * 1.2 + landing * 1.1 + arriving * 0.5 + under * 0.3);
+  lit *= 1.0 + 0.7 * shed * (1.0 - u);
 
   // Dim grains are also thinner: where little light falls, the letters are barely there.
   float bright = moonlit + 1.3 * light;
-  float alpha = haze
+  Look l;
+  l.p = p;
+  l.color = lit + shine * (glow * 1.2 + under * 0.3);
+  l.alpha = seen * (isHaze
     ? 0.015 + 0.07 * clamp(bright, 0.0, 1.5) + glow * 0.08
-    : (dust ? 0.55 : (aInfo.y > 0.5 ? 0.8 : 0.95)) * clamp(0.24 + 1.15 * bright + glow, 0.14, 1.0);
-  float loose = (0.25 + 0.5 * aSeed.z) * (haze ? 0.25 : 1.0);
-  alpha = mix(loose, alpha, e) * seen * uAppear;
-
-  vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  // Specks are sized in screen pixels, so they stay specks on any screen; haze scales with the board.
-  float px = haze
-    ? (16.0 + aSeed.z * 16.0) * uFocal / -mv.z
-    : (0.9 + aSeed.z * 1.6) * (dust ? 0.8 : 1.0) * uDot * uDistance / -mv.z;
-  // Glyphs floating close to the eye are out of focus; those deep in the dark are dimmer.
-  float blur = aloft * smoothstep(0.4, 0.75, p.z / uDistance);
-  alpha *= (1.0 - 0.15 * aloft * smoothstep(0.2, 1.0, -p.z / uDistance)) / (1.0 + 3.0 * blur);
-  px *= (1.0 + glow * 0.35) * (1.0 - 0.3 * stream * u) * (1.0 + 2.0 * blur);
-  vAlpha = alpha;
-  vSoft = haze || blur > 0.5 ? 1.0 : 0.0;
-  gl_PointSize = clamp(px, 1.0, 90.0);
-  gl_Position = projectionMatrix * mv;
+    : (isDust ? 0.55 : (aInfo.y > 0.5 ? 0.8 : 0.95)) * clamp(0.24 + 1.15 * bright + glow, 0.14, 1.0));
+  l.size = (0.9 + aSeed.z * 1.6) * (isDust ? 0.8 : 1.0) * (1.0 + glow * 0.35) * (1.0 - 0.3 * shed * u);
+  return l;
 }
-`;
 
-/**
- * START, written over the board's middle in the same glowing points. It
- * gathers out of the dust after the letters, breathes while it waits, stirs and
- * brightens as the planchette's glass comes near, and blows away when touched.
- */
-export const START_VERTEX = /* glsl */ `
-uniform float uTime;
-uniform float uGather;
-uniform float uNear;    // 0..1: how close the glass is
-uniform float uGone;    // 0..1: blowing away
-uniform float uAppear;
-uniform float uFocal;
-uniform float uDistance;
-uniform float uDot;
-uniform vec2 uMiddle;
-attribute vec3 aStart;
-attribute vec4 aSeed;
-attribute float aKind;
-varying vec3 vColor;
-varying float vAlpha;
-varying float vSoft;
-${NOISE}
-${ROTATE}
+/** The farewell: the spirit reaching out, its loosest grains blowing away; the wind; and the ground. */
+Look farewell() {
+  Look l;
+  if (aEnd.w < 0.5) {
+    vec3 v = aEnd.xyz;
+    // A quarter of its grains stream away downwind, fade, and come back to go again.
+    float u = fract(uTime * (0.12 + 0.18 * aSeed.y) + aSeed.z * 7.0);
+    float blown = step(0.75, aSeed.w);
+    vec3 qs = vec3(aEnd.xy * 3.0, uTime * 0.2 + aSeed.x * 5.0);
+    vec2 swirl = vec2(vnoise(qs), vnoise(qs + vec3(7.7, 2.9, 1.1)));
+    v.xy += blown * (vec2(0.9, 0.14) * (0.12 + 0.5 * aSeed.y) * pow(u, 1.2) + swirl * 0.06 * u);
+    v.xy += 0.0035 * vec2(sin(uTime * 2.1 + aSeed.x * 40.0), cos(uTime * 1.7 + aSeed.y * 40.0));
+    l.p = inView(v);
+    float seen = mix(1.0, smoothstep(0.0, 0.05, u) * (1.0 - smoothstep(0.55, 1.0, u)), blown);
+    float flicker = 0.75 + 0.25 * sin(uTime * (1.5 + 3.0 * aSeed.y) + aSeed.z * 30.0);
+    l.color = mix(vec3(0.6, 0.72, 1.0), vec3(0.93, 0.96, 1.0), aSeed.w) * flicker;
+    l.alpha = (isHaze ? 0.06 : (isDust ? 0.5 : 0.8)) * seen;
+    l.size = 0.85 + aSeed.z * 1.3;
+    return l;
+  }
+  if (aEnd.w < 1.5) {
+    // The wind: specks blown across the view along wavering lanes.
+    float s = fract(aEnd.x + uTime * (0.03 + 0.05 * aSeed.y));
+    float x = (s - 0.5) * 2.6 * max(uView.z / uView.w, 1.0);
+    l.p = inView(vec3(x, aEnd.y + 0.05 * sin(x * 2.3 + uTime * 0.6 + aSeed.z * 6.283), aEnd.z));
+    l.color = vec3(0.8, 0.85, 0.96) * twinkle;
+    l.alpha = isHaze ? 0.0 : 0.45 * smoothstep(0.0, 0.15, s) * (1.0 - smoothstep(0.8, 1.0, s)) * (0.3 + 0.7 * aSeed.x);
+    l.size = 0.8 + aSeed.z;
+    return l;
+  }
+  // The ground: dust lying level with the figures' feet and rolling away into the dark in long slow waves,
+  // brightest along the crests, so it shows in flowing lines.
+  float depth = mix(0.32, -1.9, pow(aEnd.y, 0.8));
+  float z = depth * uDistance;
+  float x = uView.x + aEnd.x * uView.z * 1.15 * (uDistance - z) / uDistance;
+  float wave = sin(x * 0.004 + depth * 3.0 + uTime * 0.35) + 0.6 * sin(x * 0.0023 - depth * 5.0 - uTime * 0.27 + 1.7);
+  float y = uView.y + uFeet * uView.w + uView.w * 0.035 * wave * (1.0 + 2.0 * max(-depth, 0.0));
+  float crest = pow(0.5 + 0.5 * sin(x * 0.006 + depth * 9.0 + 1.3 * wave - uTime * 0.4), 6.0);
+  l.p = vec3(x, y, z);
+  l.color = vec3(0.78, 0.82, 0.93) * (0.6 + 0.4 * aSeed.w) * twinkle;
+  l.alpha = isHaze ? 0.0 : (0.16 + 1.1 * crest) * smoothstep(-1.9, -1.25, depth) * smoothstep(0.32, 0.16, depth) * (0.45 + 0.55 * aSeed.x);
+  l.size = 0.8 + aSeed.z * 1.2;
+  return l;
+}
+
+Look formation(float which) {
+  if (which < 0.5) return loose();
+  if (which < 1.5) return startWord();
+  if (which < 2.5) return onBoard();
+  return farewell();
+}
 
 void main() {
-  bool dust = aKind > 1.5 && aKind < 2.5;
-  bool haze = aKind > 2.5;
-  vec3 p = position;
+  isDust = aInfo.y > 1.5 && aInfo.y < 2.5;
+  isHaze = aInfo.y > 2.5;
+  twinkle = 0.82 + 0.18 * sin(uTime * (1.1 + aSeed.y * 2.4) + aSeed.z * 41.0);
 
-  float gathering = (uGather - 0.5 - aSeed.x * 0.2) / 0.3;
-  float e = 1.0 - pow(1.0 - clamp(gathering, 0.0, 1.0), 3.0);
-  if (e < 1.0) {
-    vec3 qw = vec3(aStart.xy * 0.004, uTime * 0.12 + aSeed.w * 3.0);
-    vec3 off = aStart + vec3(46.0 * vec2(vnoise(qw), vnoise(qw + vec3(9.2, 4.1, 0.0))), 0.0);
-    off.xy = rotate2(off.xy, (1.0 - e) * (aSeed.w - 0.5) * 2.6);
-    p += off * (1.0 - e);
+  Look l = formation(uTo);
+  if (uFrom != uTo) {
+    // On the way: each point sets off at its own moment and flies along a curve that swings out
+    // from the middle of the view and toward the eye, and glints as it lands.
+    Look a = formation(uFrom);
+    float order = mix(aSeed.x, length((position.xy - uBoard.xy) / uBoard.zw) * 0.68 + 0.1 * aSeed.y, uPath.z);
+    float f = (uMorph - order * 0.5) / 0.5;
+    float k = clamp(f, 0.0, 1.0);
+    float e = k < 0.5 ? 4.0 * k * k * k : 1.0 - pow(2.0 - 2.0 * k, 3.0) * 0.5;
+    vec3 mid = (a.p + l.p) * 0.5;
+    vec2 away = mid.xy - uView.xy;
+    away /= max(length(away), 1.0);
+    vec3 q = vec3(position.xy * 0.003, aSeed.w * 5.0 + uTime * 0.1);
+    vec2 swirl = vec2(vnoise(q), vnoise(q + vec3(4.3, 7.1, 2.2)));
+    vec3 c = mid + vec3((away * (0.4 + 0.6 * aSeed.y) + swirl * 0.6) * uPath.x * uView.w, (0.15 + 0.85 * aSeed.z) * uPath.y * uDistance);
+    c.z = min(c.z, 0.55 * uDistance);
+    float flight = sin(3.14159 * e);
+    float landing = exp(-pow((f - 1.0) / 0.06, 2.0));
+    l.p = mix(mix(a.p, c, e), mix(c, l.p, e), e);
+    l.color = mix(a.color, l.color, e) + vec3(0.75, 0.8, 1.0) * (0.25 * flight + 0.8 * landing);
+    l.alpha = mix(a.alpha, l.alpha, e) + (isHaze ? 0.0 : 0.15 * flight);
+    l.size = mix(a.size, l.size, e);
   }
-  float arriving = exp(-pow((gathering - 1.0) / 0.08, 2.0));
 
-  // The glass coming near sets the grains trembling.
-  p.xy += (0.5 + 3.5 * uNear) * vec2(sin(uTime * (9.0 + 6.0 * aSeed.y) + aSeed.z * 40.0), cos(uTime * (8.0 + 7.0 * aSeed.z) + aSeed.y * 40.0));
-
-  // Blowing away: out from the middle and up, turning in the eddies, each grain at its own moment.
-  float gone = clamp((uGone - aSeed.y * 0.35) / 0.65, 0.0, 1.0);
-  if (gone > 0.0) {
-    vec2 out_ = position.xy - uMiddle;
-    vec2 away = out_ / max(length(out_), 1.0);
-    vec3 qs = vec3(position.xy * 0.008, uTime * 0.3);
-    vec2 swirl = vec2(vnoise(qs), vnoise(qs + vec3(7.7, 2.9, 1.1)));
-    float k = pow(gone, 1.4);
-    p.xy += k * ((away * 0.6 + vec2(0.35, 0.5)) * (140.0 + 320.0 * aSeed.z) + swirl * 90.0);
-    p.z += k * (aSeed.w - 0.35) * 0.4 * uDistance;
-  }
-
-  float breathe = 0.5 + 0.5 * sin(uTime * 1.7 - position.x * 0.004);
-  float twinkle = 0.75 + 0.25 * sin(uTime * (1.3 + aSeed.y * 2.0) + aSeed.z * 37.0);
-  vec3 silver = mix(vec3(0.68, 0.74, 0.92), vec3(0.95, 0.96, 1.0), aSeed.w) * (0.55 + 0.6 * aSeed.z * aSeed.z) * twinkle;
-  vec3 drift = mix(vec3(0.5, 0.6, 1.0), vec3(0.88, 0.9, 1.0), aSeed.w) * (0.45 + 0.75 * aSeed.z);
-  vColor = mix(drift, silver * (0.85 + 0.35 * breathe + 0.9 * uNear), e) + vec3(0.9, 0.93, 1.0) * (arriving * 0.6 + gone * (1.0 - gone) * 1.2);
-
-  float alpha = haze ? 0.05 + 0.05 * breathe + 0.1 * uNear : (dust ? 0.5 : 0.92) * (0.55 + 0.25 * breathe + 0.3 * uNear);
-  alpha = mix((0.25 + 0.5 * aSeed.z) * (haze ? 0.25 : 1.0), alpha, e);
-  alpha *= (1.0 - smoothstep(0.45, 1.0, gone)) * uAppear;
-
-  vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  float px = haze
-    ? (16.0 + aSeed.z * 16.0) * uFocal / -mv.z
-    : (0.9 + aSeed.z * 1.6) * (dust ? 0.8 : 1.0) * uDot * uDistance / -mv.z;
-  vAlpha = alpha;
-  vSoft = haze ? 1.0 : 0.0;
-  gl_PointSize = clamp(px * (1.0 + 0.25 * uNear), 1.0, 90.0);
+  vec4 mv = modelViewMatrix * vec4(l.p, 1.0);
+  // Specks are sized in screen pixels, so they stay specks on any screen; haze scales with the board.
+  float px = isHaze ? (16.0 + aSeed.z * 16.0) * uFocal / -mv.z : l.size * uDot * uDistance / -mv.z;
+  vColor = l.color;
+  vAlpha = l.alpha * uAppear;
+  vSoft = isHaze ? 1.0 : 0.0;
+  gl_PointSize = clamp(px, 1.0, 90.0);
   gl_Position = projectionMatrix * mv;
 }
 `;
@@ -450,7 +476,7 @@ uniform float uDistance;
 uniform float uDot;
 uniform float uAppear;
 uniform vec4 uView;     // the middle of what the camera sees of the board's plane, and half its width and height
-uniform float uAloft;   // 1 while the glyphs float, before the board forms
+uniform float uAloft;   // 1 until the board has formed
 attribute vec4 aSeed;
 attribute vec4 aLane;   // the stream's height in the view (-1..1), depth (a share of the camera's distance), how far it winds, and its phase
 attribute vec4 aShape;  // how wide it is, how often it twists, how fast it flows, and how bright it is

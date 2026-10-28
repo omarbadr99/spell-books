@@ -1,29 +1,23 @@
-// The planchette's position and feel. The sitters drag it (with a little lag,
-// like real wood on felt); a spirit drives it directly.
+// The planchette: the sitters' cursor. Its window sits wherever their pointer
+// is (a little above a fingertip, so the finger doesn't hide the letter), and
+// it follows with only the slightest lag, like wood sliding on felt. While the
+// spirit has it, it ignores the sitters altogether.
 
 import type { Point } from "../board/layout";
 import type { BoardView } from "../board/render";
 
-/** The planchette's body, which fingers can take hold of: an ellipse around the window and up to its point. */
-const BODY = { dy: -30, rx: 112, ry: 132 };
-const EDGE = 44;
-/** Finger movement smaller than this (board units) is jitter, not a move. */
-const JITTER = 10;
 
 export class Planchette {
   pos: Point = { x: 0, y: 0 };
   /** Smoothed speed in board units per second, for the scrape sound. */
   speed = 0;
-  held = false;
-  /** True while a spirit moves it; the sitters' fingers do nothing then. */
+  /** True while the spirit moves it; the sitters' hand does nothing then. */
   driven = false;
-  /** Extra tilt a spirit can add, in degrees. */
+  /** Extra tilt the spirit can add, in degrees. */
   tilt = 0;
   private target: Point = { x: 0, y: 0 };
-  /** When the sitters' fingers last moved, and where they were. */
+  /** When the sitters' hand last moved. */
   private movedAt = 0;
-  private anchor: Point = { x: 0, y: 0 };
-  private grabOffset: Point = { x: 0, y: 0 };
   private prev: Point = { x: 0, y: 0 };
   private velocity: Point = { x: 0, y: 0 };
   private angle = 0;
@@ -37,43 +31,25 @@ export class Planchette {
     this.velocity = { x: 0, y: 0 };
   }
 
-  canGrab(p: Point): boolean {
-    const s = this.view.layout.planchetteScale;
-    return Math.hypot((p.x - this.pos.x) / (BODY.rx * s), (p.y - this.pos.y - BODY.dy * s) / (BODY.ry * s)) <= 1;
+  /**
+   * Where the sitters' hand is taking it, in board units, and whether the hand
+   * itself has moved (rather than the view swaying under it).
+   */
+  follow(p: Point, moved: boolean): void {
+    if (this.driven) return;
+    if (moved) this.movedAt = performance.now();
+    this.target = { ...p };
   }
 
-  grab(p: Point): void {
-    this.held = true;
-    this.grabOffset = { x: this.pos.x - p.x, y: this.pos.y - p.y };
-    this.target = { ...this.pos };
-    this.anchor = { ...this.pos };
-    this.movedAt = performance.now();
-  }
-
-  dragTo(p: Point): void {
-    if (!this.held || this.driven) return;
-    const next = this.clamp({ x: p.x + this.grabOffset.x, y: p.y + this.grabOffset.y });
-    if (Math.hypot(next.x - this.anchor.x, next.y - this.anchor.y) > JITTER) {
-      this.movedAt = performance.now();
-      this.anchor = next;
-    }
-    this.target = next;
-  }
-
-  release(): void {
-    this.held = false;
-    this.target = { ...this.pos };
-  }
-
-  /** A spirit sets the position directly. */
+  /** The spirit sets the position directly. */
   drive(p: Point): void {
-    this.pos = this.clamp(p);
-    this.target = { ...this.pos };
+    this.pos = { ...p };
+    this.target = { ...p };
   }
 
   tick(dt: number): void {
     if (!this.driven) {
-      const k = 1 - Math.exp(-dt / 0.055);
+      const k = 1 - Math.exp(-dt / 0.03);
       this.pos = { x: this.pos.x + (this.target.x - this.pos.x) * k, y: this.pos.y + (this.target.y - this.pos.y) * k };
     }
     const step = Math.max(dt, 1 / 240);
@@ -90,21 +66,16 @@ export class Planchette {
   }
 
   /**
-   * The sitters' fingers have come to rest and the planchette has caught up with
-   * them. Only then may the glass choose a glyph, however slowly frames arrive.
+   * The sitters' hand has come to rest and the planchette has caught up with
+   * it. Only then may the glass choose a glyph, however slowly frames arrive.
    */
   settled(now: number): boolean {
     const lag = Math.hypot(this.target.x - this.pos.x, this.target.y - this.pos.y);
     return lag < 18 && now - this.movedAt > 80;
   }
 
-  /** Where the sitters' fingers are taking the planchette. */
-  get aim(): Point {
-    return { ...this.target };
-  }
-
-  private clamp(p: Point): Point {
-    const { width, height } = this.view.layout;
-    return { x: Math.min(width - EDGE, Math.max(EDGE, p.x)), y: Math.min(height - EDGE, Math.max(EDGE, p.y)) };
+  /** How long the sitters' hand has been still, in ms. */
+  stillFor(now: number): number {
+    return now - this.movedAt;
   }
 }

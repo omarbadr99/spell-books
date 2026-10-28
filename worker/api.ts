@@ -1,21 +1,19 @@
 // The board's four endpoints. Kept free of Workers-only globals so the tests
 // can drive it in Node with a fake Claude client.
 
-import { spiritById } from "../shared/presence";
 import { MAX_HISTORY, type Turn } from "../shared/seance";
 import { isGreeting, MAX_QUESTION_CHARS, sanitizeQuestion, sanitizeReply } from "../shared/text";
 import { issueSeat, readSeat, seatCookie, wordMatches } from "./auth";
 import { mockReply } from "./mock";
 import { askSpirit, type SpiritClient } from "./spirit";
-import { personaFor } from "./spirits";
+import { PERSONA } from "./spirits";
 
 export interface ApiDeps {
   createClient: (apiKey: string) => SpiritClient;
 }
 
-/** A question for a spirit. The séance's first question is the sitters' greeting, with no history. */
+/** A question for the spirit. The séance's first question is the sitters' greeting, with no history. */
 interface AskBody {
-  spiritId: string;
   history: Turn[];
   question: string;
 }
@@ -53,21 +51,17 @@ export async function handleApi(request: Request, env: Env, deps: ApiDeps): Prom
       if (!ask) return json({ error: "bad request" }, 400);
       if (!(await env.ASK_LIMITER.limit({ key: deviceId })).success) return json({ error: "slow" }, 429);
 
-      const spirit = spiritById(ask.spiritId)!;
-      if (env.MOCK_SPIRIT === "1") {
-        return json({ reply: mockReply(spirit, ask.question, ask.history.length) });
-      }
+      if (env.MOCK_SPIRIT === "1") return json({ reply: mockReply(ask.question, ask.history.length) });
       if (!env.ANTHROPIC_API_KEY) {
-        console.error("Set ANTHROPIC_API_KEY, or MOCK_SPIRIT=1 to play with canned spirits.");
+        console.error("Set ANTHROPIC_API_KEY, or MOCK_SPIRIT=1 to play with a canned spirit.");
         return json({ error: "silent" }, 502);
       }
 
-      // Each spirit answers on its namesake model, unless SPIRIT_MODEL puts them all on one.
-      const persona = personaFor(spirit.id)!;
+      // The spirit answers on its own model, unless SPIRIT_MODEL says otherwise.
       const answer = await askSpirit(
         deps.createClient(env.ANTHROPIC_API_KEY),
-        env.SPIRIT_MODEL || persona.model,
-        persona,
+        env.SPIRIT_MODEL || PERSONA.model,
+        PERSONA,
         ask.history,
         ask.question,
       );
@@ -105,8 +99,7 @@ async function readJson<T = unknown>(request: Request): Promise<T | null> {
  */
 export function parseAsk(body: unknown): AskBody | null {
   if (!body || typeof body !== "object") return null;
-  const { spiritId, history, question } = body as Record<string, unknown>;
-  if (typeof spiritId !== "string" || !spiritById(spiritId) || !personaFor(spiritId)) return null;
+  const { history, question } = body as Record<string, unknown>;
   if (!Array.isArray(history) || history.length > MAX_HISTORY || history.length % 2 !== 0) return null;
   if (typeof question !== "string") return null;
 
@@ -123,5 +116,5 @@ export function parseAsk(body: unknown): AskBody | null {
 
   const cleanQuestion = sanitizeQuestion(question);
   if (!cleanQuestion || !isGreeting(turns[0]?.text ?? cleanQuestion)) return null;
-  return { spiritId, history: turns, question: cleanQuestion };
+  return { history: turns, question: cleanQuestion };
 }

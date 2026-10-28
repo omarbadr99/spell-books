@@ -1,16 +1,7 @@
 import "@fontsource/cinzel/700.css";
 import "./styles.css";
 
-import {
-  boardWidthFor,
-  buildLayout,
-  chooseLayoutKind,
-  elementById,
-  hitTest,
-  type BoardLayout,
-  type LayoutKind,
-  type Point,
-} from "./board/layout";
+import { boardWidthFor, buildLayout, chooseLayoutKind, elementById, hitTest, type BoardLayout, type LayoutKind } from "./board/layout";
 import * as api from "./api";
 import { BoardView } from "./board/render";
 import { SoundScape } from "./fx/audio";
@@ -18,19 +9,25 @@ import { Room } from "./fx/room";
 import { DwellDetector } from "./planchette/dwell";
 import { Planchette } from "./planchette/planchette";
 import { Possessor } from "./planchette/possess";
-import { EndCard } from "./seance/endcard";
+import { Farewell } from "./seance/farewell";
 import { InkLine, SpiritLine, Voice } from "./seance/lines";
 import { Seance } from "./seance/machine";
 import { Ticker } from "./ticker";
 
-/** How long the glass rests on a glyph to choose it, once the fingers have stopped. A pause is enough. */
-const DWELL_MS = 130;
-/** How long it rests on START to begin. */
-const START_DWELL_MS = 380;
+/** How long the glass rests on a glyph to choose it, once the hand has stopped. */
+const DWELL_MS = 300;
+/** How long it rests, with something spelled, before what was spelled is sent. */
+const SEND_MS = 2000;
+/** How far above a fingertip the glass sits, in CSS pixels, so the finger doesn't hide the letter. */
+const LIFT = 64;
+/** Pointer movement smaller than this, in CSS pixels, is a tremble of the hand, not a move. */
+const JITTER = 6;
 /** The board's own lettering, which the particles are sampled from. */
 const BOARD_FONT = "700 80px Cinzel";
+/** The page's own buttons, over which the planchette steps aside for the ordinary pointer. */
+const BUTTONS = "#mute, #voice, #restart";
 
-// In development only: ?speed=4 runs the spirits faster, for the tests, and ?steady keeps the
+// In development only: ?speed=4 runs the spirit faster, for the tests, and ?steady keeps the
 // picture at full resolution however slowly frames come, for screenshots.
 const params = new URLSearchParams(location.search);
 const speed = import.meta.env.DEV ? Math.max(1, Number(params.get("speed")) || 1) : 1;
@@ -39,17 +36,26 @@ const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const roomEl = $<HTMLElement>("#room");
 const table = $<HTMLElement>("#table");
-/** START can also be tapped, or reached from the keyboard: this button lies over it. */
+/** START is written in the particles; this button lies over it, so it can be pressed, tapped or reached from the keyboard. */
 const playEl = $<HTMLButtonElement>("#play");
-/** Until the planchette is brought to START the glyphs float in the dark, and the séance waits. */
-let intro = true;
-/** How long the glass has rested on START, in milliseconds. */
-let onStartFor = 0;
+/** The hand's own mark, while the spirit has the planchette. */
+const cursorEl = $<HTMLElement>("#cursor");
+
+/** What the room shows: START, the board, or the farewell. */
+let scene: "start" | "board" | "farewell" = "start";
+/** Where the sitters' pointer is on the page, where the glass follows it, and whether it is a finger. */
+const pointer = { x: innerWidth / 2, y: innerHeight * 0.66, touch: false, overButton: false };
+/** Where the pointer was when it last truly moved. */
+const steadyAt = { ...pointer };
+/** How long the glass has rested, in ms, toward sending what was spelled. */
+let restingFor = 0;
+/** Whether the sitters are waiting to have the board back: while the points fly, or while the spirit has the planchette. */
+let waiting = true;
 let booted: Promise<void> = Promise.resolve();
 
 let view: BoardView;
 try {
-  view = new BoardView($<HTMLCanvasElement>("#scene"), table);
+  view = new BoardView($<HTMLCanvasElement>("#scene"), table, $<HTMLElement>("#hand"));
 } catch (error) {
   $("#hint").textContent = "This board is drawn with WebGL, which this browser has turned off.";
   throw error;
@@ -60,17 +66,14 @@ if (import.meta.env.DEV && params.has("steady")) view.adaptive = false;
 const ticker = new Ticker();
 const planchette = new Planchette(view);
 const possessor = new Possessor(planchette, view, ticker, speed);
+possessor.handAt = () => view.toBoard(pointer.x, pointer.y);
 const sound = new SoundScape();
 const room = new Room(roomEl, view, $("#hint"));
 const voice = new Voice($("#voice"), $("#voice-label"));
 
 let layout: BoardLayout = buildLayout(chooseLayoutKind(innerWidth, innerHeight));
-// The center needs no wait: stopping the glass there sends what was spelled.
-const dwell = new DwellDetector((x, y) => hitTest(layout, x, y)?.id ?? null, {
-  dwellMs: DWELL_MS,
-  dwellFor: (id) => (id === "CENTER" ? 0 : DWELL_MS),
-  maxSpeed: 260,
-});
+const dwell = new DwellDetector((x, y) => hitTest(layout, x, y)?.id ?? null, { dwellMs: DWELL_MS, maxSpeed: 260 });
+const farewell = new Farewell($("#farewell"), () => void restart());
 
 const seance: Seance = new Seance({
   room,
@@ -81,120 +84,153 @@ const seance: Seance = new Seance({
   ink: new InkLine($("#ink-line")),
   spiritLine: new SpiritLine($("#spirit-line")),
   voice,
-  endCard: new EndCard($("#endcard"), () => seance.dismissEndCard()),
   sound,
   sleep: (ms) => possessor.wait(ms),
+  farewell: () => void part(),
 });
 
 function sizeBoard(): void {
   roomEl.style.setProperty("--board-w", `${boardWidthFor(layout, innerWidth, innerHeight)}px`);
 }
 
-function applyLayout(kind: LayoutKind, first = false): void {
-  const previous = layout;
+function applyLayout(kind: LayoutKind): void {
   layout = buildLayout(kind);
   room.setLayout(kind);
   sizeBoard();
   view.setLayout(layout);
-  planchette.place(
-    first || (intro && !planchette.held)
-      ? layout.waiting
-      : { x: (planchette.pos.x / previous.width) * layout.width, y: (planchette.pos.y / previous.height) * layout.height },
-  );
-  seance.restoreBoard();
-  placePlay();
-  if (!first && !intro) view.form(calm ? 0.01 : 1.6);
 }
 
-/** Lays the START button over the word on the board. */
+/** Lays the START button over the word, wherever the view has put it. */
 function placePlay(): void {
-  const box = table.getBoundingClientRect();
-  const k = box.width / layout.width;
-  const { x, y, rx, ry } = layout.start;
+  if (playEl.hidden) return;
+  const box = view.startBox();
+  const pad = 14;
   Object.assign(playEl.style, {
-    left: `${(box.left + (x - rx) * k).toFixed(1)}px`,
-    top: `${(box.top + (y - ry) * k).toFixed(1)}px`,
-    width: `${(2 * rx * k).toFixed(1)}px`,
-    height: `${(2 * ry * k).toFixed(1)}px`,
+    left: `${(box.left - pad).toFixed(0)}px`,
+    top: `${(box.top - pad).toFixed(0)}px`,
+    width: `${(box.right - box.left + 2 * pad).toFixed(0)}px`,
+    height: `${(box.bottom - box.top + 2 * pad).toFixed(0)}px`,
   });
 }
 
-/** How far the glass is from START, in START's own radii: 1 or less is on it. */
-function fromStart(p: Point): number {
-  const s = layout.start;
-  return Math.hypot((p.x - s.x) / s.rx, (p.y - s.y) / s.ry);
-}
-
-/** Before the séance: START stirs as the glass comes near, and resting the glass on it begins. */
-function awaitStart(now: number, dt: number): void {
-  // Once the planchette is there, the hint says what to do with it.
-  if (view.planchetteHere) room.prompt("Bring the planchette to START.");
-  const d = fromStart(planchette.pos);
-  view.nearStart(Math.min(1, Math.max(0, (2.2 - d) / 1.6)));
-  onStartFor = planchette.held && d <= 1 && planchette.settled(now) ? onStartFor + dt * 1000 : 0;
-  view.setDwell(Math.min(1, onStartFor / START_DWELL_MS));
-  if (onStartFor >= START_DWELL_MS) void begin();
+/** Before the séance: START stirs and brightens as the glass comes near it. */
+function awaitStart(): void {
+  const box = view.startBox();
+  const dx = (pointer.x - (box.left + box.right) / 2) / ((box.right - box.left) / 2);
+  const dy = (pointer.y - (box.top + box.bottom) / 2) / ((box.bottom - box.top) / 2);
+  view.nearStart(Math.min(1, Math.max(0, (2.2 - Math.hypot(dx, dy * 0.5)) / 1.6)));
+  placePlay();
 }
 
 /**
- * The planchette has come to START (or START was tapped): the glyphs come down
- * into the board and the séance begins. The sound comes up, and the preview
- * asks to use Claude.
+ * On the board: the glass chooses a glyph by resting on it a moment, and once
+ * something is spelled, resting a little longer sends it. A ring round the
+ * window fills for each.
+ */
+function spellWith(now: number, dt: number): void {
+  if (planchette.driven || !seance.sittersHaveIt || view.forming) {
+    view.hover(null);
+    view.setDwell(0);
+    view.setSend(0);
+    restingFor = 0;
+    waiting = true;
+    return;
+  }
+  if (waiting) {
+    // Whatever the glass is on as the sitters get it back is only chosen once it moves off and comes back.
+    waiting = false;
+    const under = hitTest(layout, planchette.pos.x, planchette.pos.y);
+    if (under) dwell.chose(under.id);
+  }
+  const steady = planchette.settled(now);
+  const state = dwell.update(now, planchette.pos.x, planchette.pos.y, steady);
+  view.hover(state.hoverId);
+  view.setDwell(state.progress);
+  const selected = state.selected && elementById(layout, state.selected);
+  if (selected) seance.onSelect(selected);
+
+  restingFor = steady ? restingFor + dt * 1000 : 0;
+  const spelled = seance.inkText !== "" && seance.sittersHaveIt;
+  view.setSend(spelled ? Math.min(1, Math.max(0, (restingFor - DWELL_MS) / (SEND_MS - DWELL_MS))) : 0);
+  if (spelled && restingFor >= SEND_MS) {
+    restingFor = 0;
+    view.setSend(0);
+    seance.send();
+  }
+}
+
+/** A click chooses the glyph under the pointer, where the glass is going, at once. */
+function chooseNow(): void {
+  if (planchette.driven || !seance.sittersHaveIt || view.forming) return;
+  const at = view.toBoard(pointer.x, pointer.y);
+  const el = hitTest(layout, at.x, at.y);
+  if (!el) return;
+  dwell.chose(el.id);
+  restingFor = 0;
+  seance.onSelect(el);
+}
+
+/**
+ * START is pressed: it bursts and the board flies together out of the dark.
+ * The sound comes up, and the preview asks to use Claude.
  */
 async function begin(): Promise<void> {
-  if (!intro) return;
-  intro = false;
-  onStartFor = 0;
-  view.setDwell(0);
-  view.nearStart(1);
+  if (scene !== "start") return;
+  scene = "board";
   playEl.hidden = true;
+  view.nearStart(1);
   sound.unlock();
   sound.awaken();
   void api.prepare();
-  const opened = view.open(calm);
-  // Begun without it, the planchette drifts to the middle of the board by itself.
-  if (!planchette.held && fromStart(planchette.pos) > 1) {
-    planchette.driven = true;
-    await possessor.home();
-    planchette.driven = false;
-  }
-  await opened;
+  await view.open(calm);
   roomEl.classList.remove("intro");
   room.prompt(null);
   await booted;
 }
 
-// Fingers on the planchette, which may hang a little over the board's edge.
+/** The spirit has gone: the board breaks up into the farewell. */
+async function part(): Promise<void> {
+  scene = "farewell";
+  roomEl.classList.add("parted");
+  sound.farewell();
+  const formed = view.farewell(calm);
+  window.setTimeout(() => farewell.show(view.sitterBox()), calm ? 0 : 2600);
+  await formed;
+}
+
+/** Restart: the farewell flies back together into START. */
+async function restart(): Promise<void> {
+  if (scene !== "farewell") return;
+  scene = "start";
+  farewell.hide();
+  pointer.overButton = false;
+  roomEl.classList.remove("parted");
+  roomEl.classList.add("intro");
+  room.prompt("Press START to begin.");
+  seance.restart();
+  playEl.hidden = false;
+  await view.again(calm);
+}
+
+/** Where the sitters' pointer is, and whether it is over one of the page's own buttons. */
+function track(e: PointerEvent): void {
+  if (!e.isPrimary) return;
+  pointer.touch = e.pointerType === "touch";
+  pointer.x = e.clientX;
+  pointer.y = e.clientY - (pointer.touch ? LIFT : 0);
+  pointer.overButton = !pointer.touch && (e.target as Element).closest?.(BUTTONS) != null;
+  view.look(e.clientX, e.clientY);
+}
+
+addEventListener("pointermove", track);
 addEventListener("pointerdown", (e) => {
-  if (!e.isPrimary || (e.target as Element).closest("#endcard, #mute, #voice")) return;
-  const p = view.toBoard(e.clientX, e.clientY);
-  // A touch anywhere else hurries the board along as it comes down.
-  if (!view.planchetteHere || !planchette.canGrab(p)) return view.hurry();
-  e.preventDefault();
+  track(e);
   sound.unlock();
-  if (planchette.driven || !(intro || seance.sittersHaveIt)) return;
-  planchette.grab(p);
-  table.setPointerCapture(e.pointerId);
+  // A touch while the points are flying hurries them along.
+  if (view.forming && scene !== "start") view.hurry();
+  if (scene === "board" && e.pointerType === "mouse" && e.button === 0 && !pointer.overButton) chooseNow();
 });
-table.addEventListener("pointermove", (e) => {
-  if (planchette.held) planchette.dragTo(view.toBoard(e.clientX, e.clientY));
-});
-// The eye drifts a little toward the hand, so the depths slide past the board.
-addEventListener("pointermove", (e) => view.look(e.clientX, e.clientY));
-const letGo = () => {
-  if (!planchette.held) return;
-  // Letting go with the window on the center sends too, however briefly it was there; on START, it begins.
-  const aim = planchette.aim;
-  const center = hitTest(layout, aim.x, aim.y);
-  planchette.release();
-  dwell.release();
-  view.setDwell(0);
-  if (intro) {
-    if (fromStart(aim) <= 1) void begin();
-  } else if (center?.id === "CENTER" && !planchette.driven) seance.onSelect(center);
-};
-table.addEventListener("pointerup", letGo);
-table.addEventListener("pointercancel", letGo);
+playEl.addEventListener("click", () => void begin());
 // Tapping the message rubs out its last letter.
 $("#voice").addEventListener("click", () => seance.unsay());
 
@@ -202,20 +238,20 @@ $("#voice").addEventListener("click", () => seance.unsay());
 for (const type of ["pointerdown", "touchend", "click"]) document.addEventListener(type, () => sound.unlock());
 
 ticker.add((now, dt) => {
+  const moved = Math.hypot(pointer.x - steadyAt.x, pointer.y - steadyAt.y) > JITTER;
+  if (moved) Object.assign(steadyAt, { x: pointer.x, y: pointer.y });
+  if (!planchette.driven) planchette.follow(view.toBoard(pointer.x, pointer.y), moved);
   planchette.tick(dt);
   sound.scrape(planchette.speed);
   sound.wind(view.windLevel);
-  if (intro) {
-    awaitStart(now, dt);
-  } else if (planchette.held && !planchette.driven && seance.sittersHaveIt && !view.forming) {
-    const state = dwell.update(now, planchette.pos.x, planchette.pos.y, planchette.settled(now));
-    view.hover(state.hoverId);
-    view.setDwell(state.progress);
-    const selected = state.selected && elementById(layout, state.selected);
-    if (selected) seance.onSelect(selected);
-  } else {
-    view.hover(null);
-  }
+  // The planchette rests once the spirit has gone; otherwise it steps aside only for the page's own buttons.
+  view.showPlanchette(scene !== "farewell" && (planchette.driven || !pointer.overButton));
+  // While the spirit has the planchette, a faint mark shows where the hand is.
+  const hand = planchette.driven && !pointer.touch;
+  cursorEl.classList.toggle("on", hand);
+  if (hand) cursorEl.style.transform = `translate(${pointer.x.toFixed(1)}px, ${pointer.y.toFixed(1)}px)`;
+  if (scene === "start") awaitStart();
+  else if (scene === "board") spellWith(now, dt);
 });
 ticker.onDraw((now, dt) => view.tick(now, dt));
 
@@ -225,10 +261,7 @@ addEventListener("resize", () => {
   resizeTimer = window.setTimeout(() => {
     const kind = chooseLayoutKind(innerWidth, innerHeight);
     if (kind !== layout.kind) applyLayout(kind);
-    else {
-      sizeBoard();
-      placePlay();
-    }
+    else sizeBoard();
   }, 150);
 });
 
@@ -255,9 +288,10 @@ if (import.meta.env.DEV) {
   Object.assign(window, {
     __board: {
       phase: () => seance.phase,
+      scene: () => scene,
       visited: () => visited.length,
       since: (from: number) => visited.slice(from),
-      spirit: () => seance.spirit?.id ?? null,
+      spirit: () => seance.spirit?.name ?? null,
       lens: () => view.toScreen(planchette.pos),
       glyph: (id: string) => {
         const el = elementById(layout, id);
@@ -268,7 +302,10 @@ if (import.meta.env.DEV) {
       ink: () => seance.inkText,
       speaker: () => `${$("#voice").getAttribute("data-speaker")}:${$("#voice-label").textContent}`,
       forming: () => view.forming,
-      start: () => (intro ? view.toScreen(layout.start) : null),
+      start: () => {
+        const box = view.startBox();
+        return { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 };
+      },
       // The scene itself, for measuring what each layer costs.
       view,
     },
@@ -281,27 +318,26 @@ async function start(): Promise<void> {
     document.fonts.load(BOARD_FONT).then((faces) => faces.length > 0, () => false),
     new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
   ]);
-  applyLayout(layout.kind, true);
-  if (calm) view.settle();
+  applyLayout(layout.kind);
+  planchette.place(layout.rest);
   showMute();
   requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("preload")));
   ticker.start();
 
   if (!fontReady) {
-    // If the lettering turns up late, sample it again and let the board re-form.
+    // If the lettering turns up late, sample it again.
     const late = () => {
       if (!document.fonts.check(BOARD_FONT)) return;
       document.fonts.removeEventListener("loadingdone", late);
       view.resample();
-      if (!view.forming) view.form(calm ? 0.01 : 1.4);
     };
     document.fonts.addEventListener("loadingdone", late);
   }
   // Meanwhile, find out whether this device already knows the word. Its hints wait until the séance begins.
-  room.prompt("");
+  room.prompt("Press START to begin.");
   booted = seance.boot();
-  // The glyphs gather out of the dust and float in the dark until the planchette is brought to START.
-  playEl.addEventListener("click", () => void begin());
+  // The dust flies together into START, and waits there to be pressed.
+  await view.gather(calm);
 }
 
 void start();

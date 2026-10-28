@@ -13,6 +13,12 @@ export const shared = {
   uFocal: { value: 1 },
   /** How far the camera stands from the board's plane. */
   uDistance: { value: 1 },
+  /** The middle of what the camera sees of the board's plane (xy), and half its width and height (zw). */
+  uView: { value: new Vector4(0, 0, 1, 1) },
+  /** The board's middle (xy) and half its width and height (zw), in world units. */
+  uBoard: { value: new Vector4(0, 0, 1, 1) },
+  /** How strongly the board curves round the sitters, 1 in full. */
+  uCurve: { value: 1 },
   /** Device pixels for a dot of size 1 on the board's plane: sizes the specks themselves. */
   uDot: { value: 1 },
   uLightPos: { value: new Vector3() },

@@ -1,7 +1,8 @@
-// Every sound is synthesized with Web Audio, so there are no audio files: a drone
-// per spirit, the planchette's scrape, chimes on letters, and signature sounds.
+// Every sound is synthesized with Web Audio, so there are no audio files: the
+// spirit's drone, the candle's crackle, the planchette's scrape, chimes on
+// letters, the wind, and the swells as the board forms and breaks up.
 
-import type { Signature, SpiritSound } from "../../shared/presence";
+import type { SpiritSound } from "../../shared/presence";
 
 const MUTE_KEY = "spirit-board:muted";
 const VOLUME = 0.9;
@@ -26,7 +27,7 @@ export class SoundScape {
   private windBand!: BiquadFilterNode;
   private noise!: AudioBuffer;
   private stopDrone: ((at: number) => void) | null = null;
-  private signatureTimer = 0;
+  private crackleTimer = 0;
   private lastScrape = 0;
   private lastWind = 0;
   private room: GainNode | null = null;
@@ -106,7 +107,7 @@ export class SoundScape {
     this.windBand.Q.setTargetAtTime(0.8 + 2.6 * level, t, 0.3);
   }
 
-  /** A spirit arrives: its drone swells and its signature sounds. */
+  /** The spirit arrives: its drone swells, and now and then the candle crackles. */
   summon(sound: SpiritSound): void {
     if (!this.ctx) return;
     this.release(0.8);
@@ -117,10 +118,10 @@ export class SoundScape {
     this.droneBus.gain.cancelScheduledValues(now);
     this.droneBus.gain.setValueAtTime(this.droneBus.gain.value, now);
     this.droneBus.gain.linearRampToValueAtTime(0.55, now + 3.5);
-    window.setTimeout(() => this.signature(sound.signature), 1400);
+    window.setTimeout(() => this.crackle(), 1400);
     const again = () => {
-      this.signatureTimer = window.setTimeout(() => {
-        this.signature(sound.signature);
+      this.crackleTimer = window.setTimeout(() => {
+        this.crackle();
         again();
       }, 26_000 + Math.random() * 22_000);
     };
@@ -129,7 +130,7 @@ export class SoundScape {
 
   /** The spirit leaves: the drone fades away. */
   release(fade = 2.5): void {
-    clearTimeout(this.signatureTimer);
+    clearTimeout(this.crackleTimer);
     if (!this.ctx || !this.stopDrone) return;
     const now = this.ctx.currentTime;
     this.droneBus.gain.cancelScheduledValues(now);
@@ -180,8 +181,9 @@ export class SoundScape {
   }
 
   /**
-   * Play is pressed: a low chord swells and air rushes in as the board gathers
-   * out of the dark, a shimmer as it lands, and then the room's quiet tone stays.
+   * START is pressed: a low chord swells and air rushes in as the board flies
+   * together out of the dark, a shimmer as it lands, and then the room's quiet
+   * tone stays.
    */
   awaken(): void {
     if (!this.ctx) return;
@@ -234,34 +236,29 @@ export class SoundScape {
     for (const [i, r] of [1, 5 / 4, 3 / 2, 2].entries()) this.tone(392 * r, t + 0.25 + i * 0.12, 1.6, "sine", 0.03);
   }
 
-  signature(signature: Signature): void {
+  /** The candle crackles: a scatter of tiny pops over a soft rush. */
+  crackle(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + 0.05;
-    const r = this.root;
-    switch (signature) {
-      case "bell":
-        [[1, 4, 0.08], [2, 3, 0.04], [2.76, 2.4, 0.03], [4.07, 1.6, 0.015], [5.4, 1.2, 0.01]].forEach(([k, d, g]) =>
-          this.tone(r * 2 * k, t, d, "sine", g, 0.004),
-        );
-        break;
-      case "musicbox":
-        for (let i = 0; i < 6; i++) {
-          const f = r * 4 * PENTATONIC[Math.floor(Math.random() * 5)] * (Math.random() < 0.3 ? 2 : 1);
-          this.tone(f, t + i * 0.3, 1.3, "sine", 0.05);
-          this.tone(f * 2, t + i * 0.3, 0.5, "triangle", 0.012);
-        }
-        break;
-      case "fire":
-        for (let i = 0; i < 30; i++) {
-          this.burst(t + Math.random() * 2.6, 0.01 + Math.random() * 0.02, "bandpass", 1500 + Math.random() * 2500, 1.5, 0.05 + Math.random() * 0.07);
-        }
-        this.wash(t, 2.8, 250, 0.08);
-        break;
-      case "gramophone":
-        for (let i = 0; i < 40; i++) this.burst(t + Math.random() * 2.6, 0.004, "highpass", 3000, 0.7, 0.05);
-        [1, 5 / 4, 3 / 2, 4 / 3].forEach((k, i) => this.tone(r * 2 * k, t + 0.3 + i * 0.55, 0.6, "triangle", 0.035, 0.03, 4));
-        break;
+    for (let i = 0; i < 30; i++) {
+      this.burst(t + Math.random() * 2.6, 0.01 + Math.random() * 0.02, "bandpass", 1500 + Math.random() * 2500, 1.5, 0.05 + Math.random() * 0.07);
     }
+    this.wash(t, 2.8, 250, 0.08);
+  }
+
+  /** The farewell: wind rises and falls away, and a last soft chord. */
+  farewell(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const air = this.noiseSource();
+    const band = this.filter("bandpass", 300, 0.9);
+    band.frequency.setValueAtTime(300, t);
+    band.frequency.exponentialRampToValueAtTime(1100, t + 2.2);
+    band.frequency.exponentialRampToValueAtTime(260, t + 5.5);
+    air.connect(band).connect(this.envelope(t, 1.8, 0.09, 3.6)).connect(this.master);
+    air.start(t, Math.random());
+    air.stop(t + 5.6);
+    [1, 5 / 4, 3 / 2, 15 / 8].forEach((k, i) => this.tone(220 * k, t + 1.6 + i * 0.22, 2.4, "sine", 0.018, 0.4));
   }
 
   private startDrone(sound: SpiritSound): (at: number) => void {

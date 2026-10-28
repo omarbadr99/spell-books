@@ -27,6 +27,9 @@
 
       <button id="play" type="button" aria-label="Begin the séance"></button>
 
+      <div id="hand" aria-hidden="true"></div>
+      <div id="cursor" aria-hidden="true"></div>
+
       <button id="mute" type="button" aria-label="Mute sound" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path class="speaker" d="M4 9h4l5-4v14l-5-4H4z" />
@@ -35,15 +38,14 @@
         </svg>
       </button>
 
-      <p id="disclaimer">For entertainment. The spirits are an AI.</p>
+      <p id="disclaimer">For entertainment. The spirit is an AI.</p>
 
-      <section id="endcard" hidden aria-label="The séance has ended">
-        <div class="card">
-          <div class="endcard-halo" aria-hidden="true"></div>
-          <h2 class="endcard-name"></h2>
-          <p class="endcard-epitaph"></p>
-          <p class="endcard-stats"></p>
-          <p class="endcard-again">Touch to summon another</p>
+      <section id="farewell" hidden aria-label="The séance has ended">
+        <div class="sitter"></div>
+        <div class="words">
+          <p class="farewell-line">It was nice to meet you.</p>
+          <p class="farewell-line soft">Come back again.</p>
+          <button id="restart" type="button">Restart</button>
         </div>
       </section>
     </main>

@@ -1,5 +1,5 @@
 // Dwell-to-select: a glyph is chosen when the planchette's glass rests on it.
-// Pure logic, driven once per frame while the sitters hold the planchette.
+// Pure logic, driven once per frame while the sitters have the planchette.
 
 export interface DwellOptions {
   /** How long the glass must rest on a glyph, in ms. */
@@ -62,6 +62,12 @@ export class DwellDetector {
     this.blocked = id;
     this.since = t;
     return { hoverId: id, progress: 1, selected: id };
+  }
+
+  /** A glyph chosen some other way, e.g. with a click: it stays blocked until the glass leaves it, as if dwelt on. */
+  chose(id: string): void {
+    this.blocked = id;
+    this.candidate = id;
   }
 
   /** The sitters let go: forget the pending glyph but keep the last selection blocked. */

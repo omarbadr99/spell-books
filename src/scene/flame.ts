@@ -3,8 +3,7 @@
 // in the wind and swells while a spirit speaks.
 
 import { AdditiveBlending, Group, Mesh, PlaneGeometry, ShaderMaterial } from "three";
-import type { BoardLayout } from "../board/layout";
-import { candleGeometry } from "./board";
+import type { Vector3 } from "three";
 import type { CandleLight } from "./light";
 import { FLAME_FRAGMENT, FLAME_ROOM, GLOW_FRAGMENT, QUAD_VERTEX } from "./shaders";
 import { shared } from "./uniforms";
@@ -38,11 +37,11 @@ export class Flame {
     this.group.add(this.glow, this.flame);
   }
 
-  place(layout: BoardLayout): void {
-    const candle = candleGeometry(layout);
-    this.height = candle.flame;
-    this.flame.position.set(candle.x, -candle.wickTop, 26);
-    this.glow.position.copy(candle.light);
+  /** Stands the flame on the wick, `height` tall, with its glow about `light`. */
+  place(wick: Vector3, light: Vector3, height: number): void {
+    this.height = height;
+    this.flame.position.copy(wick);
+    this.glow.position.copy(light);
   }
 
   update(light: CandleLight): void {

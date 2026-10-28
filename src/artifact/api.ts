@@ -1,15 +1,14 @@
 // The board's calls when it runs as a claude.ai artifact (npm run build:artifact):
-// there is no Worker and no lock (the link is already private), and the spirits
-// answer through the viewer's own Claude, via the artifact's `sample` capability.
-// Each spirit asks for its namesake model; if that one isn't available here, the
-// call falls back to a model of a similar size, and if it is slow to answer, a
-// quick one answers for it so the séance never stalls.
+// there is no Worker and no lock (the link is already private), and the spirit
+// answers through the viewer's own Claude, via the artifact's `sample`
+// capability. It asks for the spirit's own model; if that one isn't available
+// here, the call falls back to a model of the same size, and if it is slow to
+// answer, a quick one answers for it so the séance never stalls.
 
-import { spiritById } from "../../shared/presence";
 import { REFUSAL_REPLY } from "../../shared/seance";
 import { preferYesNo, sanitizeReply } from "../../shared/text";
 import { mockReply } from "../../worker/mock";
-import { buildSystemPrompt, conversation, personaFor } from "../../worker/spirits";
+import { buildSystemPrompt, conversation, PERSONA } from "../../worker/spirits";
 import type { AskBody, AskResult, EnterResult, SeatState } from "../api";
 
 type Tier = "quick" | "default" | "complex";
@@ -37,11 +36,8 @@ declare global {
   }
 }
 
-/** How long a spirit may think before a quicker voice answers for it. */
+/** How long the spirit may think before a quicker voice answers for it. */
 const PATIENCE_MS = 9_000;
-
-/** The size of model to fall back to when a spirit's own model can't be used. */
-const TIERS: Record<string, Tier> = { haiku: "quick", sonnet: "default", fable: "complex", opus: "complex" };
 
 const samplePromise: Promise<Sample | null> = window.claude?.use("sample").catch(() => null) ?? Promise.resolve(null);
 const permissionsPromise: Promise<Permissions | null> =
@@ -49,9 +45,9 @@ const permissionsPromise: Promise<Permissions | null> =
 let canned = false;
 
 /**
- * Asks the viewer, up front, to let the spirits answer through their Claude.
- * Called from the Play button, so the question comes before the séance does
- * instead of in the middle of a greeting.
+ * Asks the viewer, up front, to let the spirit answer through their Claude.
+ * Called from START, so the question comes before the séance does instead of
+ * in the middle of a greeting.
  */
 export async function prepare(): Promise<void> {
   const permissions = await permissionsPromise;
@@ -80,20 +76,16 @@ export async function enter(): Promise<EnterResult> {
 }
 
 export async function ask(body: AskBody): Promise<AskResult> {
-  const spirit = spiritById(body.spiritId);
-  const persona = personaFor(body.spiritId);
-  if (!spirit || !persona) return { error: "silent" };
-
   const sample = canned ? null : await samplePromise;
   if (!sample) {
     return {
-      reply: mockReply(spirit, body.question, body.history.length),
-      note: "Claude isn't connected here, so the spirits are using canned replies.",
+      reply: mockReply(body.question, body.history.length),
+      note: "Claude isn't connected here, so the spirit is using canned replies.",
     };
   }
 
   // There is no system prompt here, so the spirit's rules lead the first message.
-  const rules = `${buildSystemPrompt(persona)}\n\nEvery message from the sitters is spelled on the board. Reply with only the words the planchette should spell.`;
+  const rules = `${buildSystemPrompt(PERSONA)}\n\nEvery message from the sitters is spelled on the board. Reply with only the words the planchette should spell.`;
   const input = conversation(body.history, body.question).map((line, i) =>
     i === 0 ? { ...line, content: `${rules}\n\n${line.content}` } : line,
   );
@@ -103,7 +95,7 @@ export async function ask(body: AskBody): Promise<AskResult> {
   try {
     let text: string;
     try {
-      const own = { model: persona.model, modelTier: TIERS[spirit.id], effort: "low", cache: false } as const;
+      const own = { model: PERSONA.model, modelTier: "complex", effort: "low", cache: false } as const;
       text = await within(sample, input, own, deciding ? null : PATIENCE_MS);
     } catch (error) {
       if (codeOf(error) !== "cancelled") throw error;
@@ -126,8 +118,8 @@ export async function ask(body: AskBody): Promise<AskResult> {
       case "capability_removed":
         canned = true;
         return {
-          reply: mockReply(spirit, body.question, body.history.length),
-          note: "Claude isn't allowed for this board, so the spirits are using canned replies.",
+          reply: mockReply(body.question, body.history.length),
+          note: "Claude isn't allowed for this board, so the spirit is using canned replies.",
         };
       default:
         return { error: "silent" };

@@ -21,7 +21,7 @@
     { "name": "ENTER_LIMITER", "namespace_id": "4202", "simple": { "limit": 5, "period": 60 } }
   ],
   "env": {
-    // Used by the Playwright tests: canned spirits, no API key, relaxed limits.
+    // Used by the Playwright tests: a canned spirit, no API key, relaxed limits.
     "e2e": {
       "vars": {
         "MOCK_SPIRIT": "1"

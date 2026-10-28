@@ -1,22 +1,21 @@
-// The tone sampler: greets each spirit, asks it the same questions through its
-// real model, and prints the replies side by side, so you can tune
-// worker/spirits.ts before filming. Every question follows the greeting, as on
-// the board. A full run of all four spirits costs well under a dollar.
+// The tone sampler: greets the spirit, asks it the same questions through its
+// real model, and prints the replies, so you can tune worker/spirits.ts before
+// filming. Every question follows the greeting, as on the board. A run costs a
+// few cents.
 //
-//   npm run sample                                    every spirit on its own model
-//   npm run sample -- --spirit fable --effort medium  one spirit, more thinking
-//   npm run sample -- --model <model id>              every spirit on one model
+//   npm run sample                          on the spirit's own model
+//   npm run sample -- --effort medium       with more thinking
+//   npm run sample -- --model <model id>    on another model, to compare
 //
 // Reads ANTHROPIC_API_KEY from the environment or from .dev.vars.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { SPIRITS } from "../shared/presence";
 import type { Turn } from "../shared/seance";
 import { MAX_REPLY_CHARS } from "../shared/text";
 import { replyFrom, spiritRequest, type Effort } from "../worker/spirit";
-import { personaFor } from "../worker/spirits";
+import { PERSONA } from "../worker/spirits";
 
 /** First words: each is the start of its own séance. */
 const GREETINGS = ["HI", "HELLO", "ISANYONETHERE"];
@@ -54,7 +53,6 @@ const PRICES: Record<string, { input: number; output: number; cacheWrite: number
 
 const { values: args } = parseArgs({
   options: {
-    spirit: { type: "string" },
     effort: { type: "string", default: "low" },
     model: { type: "string" },
   },
@@ -71,15 +69,11 @@ function apiKey(): string | undefined {
 
 const key = apiKey();
 if (!key) {
-  console.error("Set ANTHROPIC_API_KEY (in your shell or in .dev.vars) to sample the spirits.");
+  console.error("Set ANTHROPIC_API_KEY (in your shell or in .dev.vars) to sample the spirit.");
   process.exit(1);
 }
 
-const spirits = args.spirit ? SPIRITS.filter((s) => s.id === args.spirit) : SPIRITS;
-if (spirits.length === 0) {
-  console.error(`No spirit called "${args.spirit}". Try one of: ${SPIRITS.map((s) => s.id).join(", ")}`);
-  process.exit(1);
-}
+const model = args.model ?? PERSONA.model;
 
 const client = new Anthropic({ apiKey: key });
 let dollars = 0;
@@ -94,12 +88,10 @@ function check(raw: string, reply: string): string {
   return notes.length ? `  ⚠ ${notes.join("; ")}` : "";
 }
 
-/** One question to one spirit; returns what the board would spell, with notes. */
-async function ask(spiritId: string, history: Turn[], question: string): Promise<{ reply: string; line: string }> {
-  const persona = personaFor(spiritId)!;
-  const model = args.model ?? persona.model;
+/** One question to the spirit; returns what the board would spell, with notes. */
+async function ask(history: Turn[], question: string): Promise<{ reply: string; line: string }> {
   try {
-    const response = await client.beta.messages.create(spiritRequest(model, persona, history, question, args.effort as Effort));
+    const response = await client.beta.messages.create(spiritRequest(model, PERSONA, history, question, args.effort as Effort));
     const price = PRICES[model];
     if (price) {
       const u = response.usage;
@@ -141,23 +133,18 @@ async function pool<T>(tasks: (() => Promise<T>)[], size: number): Promise<T[]> 
   return results;
 }
 
-const on = args.model ? `on ${args.model}` : "each on its own model";
-console.log(`Sampling ${spirits.length} spirit(s) ${on} at ${args.effort} effort…\n`);
-for (const spirit of spirits) {
-  // The first greeting writes the prompt cache; the rest read it.
-  const [first, ...others] = GREETINGS;
-  const greetings = [await ask(spirit.id, [], first), ...(await pool(others.map((g) => () => ask(spirit.id, [], g)), 3))];
-  const hello = greetings[GREETINGS.indexOf("HELLO")];
-  const history: Turn[] = [
-    { from: "sitters", text: "HELLO" },
-    { from: "spirit", text: hello.reply || "HELLO" },
-  ];
-  const answers = await pool(QUESTIONS.map((q) => () => ask(spirit.id, history, q)), 4);
-
-  console.log(`── ${spirit.name} (${args.model ?? personaFor(spirit.id)!.model}) ──`);
-  GREETINGS.forEach((g, i) => console.log(`  ${g.padEnd(30)} → ${greetings[i].line}`));
-  console.log(`  ${"·".repeat(30)}`);
-  QUESTIONS.forEach((q, i) => console.log(`  ${q.padEnd(30)} → ${answers[i].line}`));
-  console.log();
-}
+console.log(`Sampling the spirit on ${model} at ${args.effort} effort…\n`);
+// The first greeting writes the prompt cache; the rest read it.
+const [first, ...others] = GREETINGS;
+const greetings = [await ask([], first), ...(await pool(others.map((g) => () => ask([], g)), 3))];
+const hello = greetings[GREETINGS.indexOf("HELLO")];
+const history: Turn[] = [
+  { from: "sitters", text: "HELLO" },
+  { from: "spirit", text: hello.reply || "HELLO" },
+];
+const answers = await pool(QUESTIONS.map((q) => () => ask(history, q)), 4);
+GREETINGS.forEach((g, i) => console.log(`  ${g.padEnd(30)} → ${greetings[i].line}`));
+console.log(`  ${"·".repeat(30)}`);
+QUESTIONS.forEach((q, i) => console.log(`  ${q.padEnd(30)} → ${answers[i].line}`));
+console.log();
 console.log(`≈ $${dollars.toFixed(4)}${unpriced ? " (plus a model with no price listed here)" : ""}`);

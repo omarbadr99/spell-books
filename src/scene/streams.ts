@@ -2,7 +2,7 @@
 // Each is a ribbon of specks laid along its length; the shader winds, twists and
 // frays it as it goes, and the whole lot flows on slowly, faster in a wind.
 
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial, Vector4 } from "three";
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial } from "three";
 import { gauss } from "./board";
 import { seeded } from "./sampling";
 import { POINT_FRAGMENT, STREAM_VERTEX } from "./shaders";
@@ -65,7 +65,7 @@ export class Streams {
     this.points = new Points(
       geometry,
       new ShaderMaterial({
-        uniforms: { ...shared, uFlow: { value: 0 }, uView: { value: new Vector4() }, uAloft: { value: 1 } },
+        uniforms: { ...shared, uFlow: { value: 0 }, uAloft: { value: 1 } },
         vertexShader: STREAM_VERTEX,
         fragmentShader: POINT_FRAGMENT,
         transparent: true,
@@ -78,17 +78,7 @@ export class Streams {
     this.points.renderOrder = 1;
   }
 
-  /** Fits the streams to what the camera sees of the board's plane. */
-  place(view: { x0: number; y0: number; x1: number; y1: number }): void {
-    (this.points.material.uniforms.uView.value as Vector4).set(
-      (view.x0 + view.x1) / 2,
-      (view.y0 + view.y1) / 2,
-      (view.x1 - view.x0) / 2,
-      (view.y1 - view.y0) / 2,
-    );
-  }
-
-  /** Flows on. `breeze` (0..1+) is how hard the room's wind is blowing; `aloft`, 1 while the glyphs float. */
+  /** Flows on. `breeze` (0..1+) is how hard the room's wind is blowing; `aloft`, 1 until the board has formed. */
   update(dt: number, breeze: number, aloft: number): void {
     this.flow += dt * (1 + 1.6 * breeze);
     const { uniforms } = this.points.material;

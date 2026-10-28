@@ -1,5 +1,5 @@
-// One question to one spirit: build the conversation, ask Claude on the spirit's
-// own model, and clean the reply into something the planchette can spell.
+// One question to the spirit: build the conversation, ask Claude on the
+// spirit's model, and clean the reply into something the planchette can spell.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { REFUSAL_REPLY, type Turn } from "../shared/seance";
@@ -11,10 +11,10 @@ export type SpiritClient = { beta: { messages: Pick<Anthropic["beta"]["messages"
 
 export const spiritClient = (apiKey: string): SpiritClient => new Anthropic({ apiKey });
 
-/** The quick model that answers for a spirit whose own model is too slow or too busy tonight. */
+/** The quick model that answers for the spirit when its own model is too slow or too busy tonight. */
 export const QUICK_MODEL = "claude-haiku-5-5";
 /**
- * How long a spirit may think before the quick model answers for it. Both tries
+ * How long the spirit may think before the quick model answers for it. Both tries
  * together stay inside the page's own 32-second wait.
  */
 const PATIENCE_MS = 12_000;

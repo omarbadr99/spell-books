@@ -46,6 +46,8 @@ export interface GlideOptions {
 
 export class Possessor {
   style: MotionStyle = STILL_AIR;
+  /** Where the sitters' hand is now, on the board: the planchette goes back there when the spirit lets go. */
+  handAt: () => Point = () => this.view.layout.rest;
   /** The last glyph the planchette settled on. */
   lastTarget: string | null = null;
   /** Where the spirit means the glass to be, before the fingers' unsteadiness. */
@@ -213,8 +215,9 @@ export class Possessor {
     await this.linger(this.style.wordRest);
   }
 
+  /** Brings the planchette back to the sitters' hand, which takes it again from there. */
   home(): Promise<void> {
-    return this.glide(this.view.layout.rest, { speed: this.style.speed * 0.6, overshoot: 0 });
+    return this.glide(this.handAt(), { speed: this.style.speed * 0.8, overshoot: 0, hesitation: 0 });
   }
 
   /**

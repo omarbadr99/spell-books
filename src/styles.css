@@ -42,6 +42,8 @@ body {
   display: grid;
   place-items: center;
   overflow: hidden;
+  /* The planchette is the pointer. */
+  cursor: none;
 }
 
 /* The universe, the board's particles and the candle, all drawn in one canvas. */
@@ -235,58 +237,38 @@ body {
   }
 }
 
-/* The board's box. The particles are lined up with it; the planchette is drawn in it. */
+/* The board's box. The particles are lined up with it. */
 #table {
   position: relative;
   width: var(--board-w);
   touch-action: none;
 }
 
-#units {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0;
+/* The planchette's layer, over the whole window: it goes wherever the pointer goes. */
+#hand {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
   pointer-events: none;
 }
 
-/* Where the planchette rests, and is brought back to send: a ring of soft light. */
-#center-ring {
-  position: absolute;
+/* While the spirit has the planchette, the hand's own faint mark. */
+#cursor {
+  position: fixed;
+  z-index: 6;
+  left: -6px;
+  top: -6px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    transparent 52%,
-    rgba(var(--spirit-rgb), 0.07) 60%,
-    rgba(255, 255, 255, 0.22) 66%,
-    rgba(var(--spirit-rgb), 0.06) 72%,
-    transparent 80%
-  );
-  opacity: 0.55;
-  transition: opacity 0.6s ease;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 30%, rgba(214, 220, 255, 0.35) 45%, transparent 72%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
 }
 
-#center-ring.beckon {
-  animation: beckon 1.8s ease-in-out infinite;
-}
-
-#center-ring.flash {
-  animation: ring-flash 0.7s ease-out;
-}
-
-@keyframes beckon {
-  50% {
-    opacity: 1;
-    scale: 1.06;
-  }
-}
-
-@keyframes ring-flash {
-  0% {
-    opacity: 1;
-    scale: 1.2;
-    filter: brightness(2.2);
-  }
+#cursor.on {
+  opacity: 1;
 }
 
 /* The planchette: porcelain, drawn with gradients rather than particles. */
@@ -299,7 +281,7 @@ body {
   transform-origin: 0 0;
   opacity: 0;
   filter: drop-shadow(0 26px 28px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 24px rgba(255, 255, 255, 0.12));
-  transition: opacity 1.4s ease;
+  transition: opacity 0.35s ease;
   will-change: transform;
 }
 
@@ -342,6 +324,14 @@ body {
   fill: none;
   stroke: rgba(var(--spirit-rgb), 0.95);
   stroke-width: 3.5;
+  stroke-linecap: round;
+}
+
+/* Resting on, toward sending: a thinner ring further out. */
+.send-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1.6;
   stroke-linecap: round;
 }
 
@@ -419,7 +409,7 @@ body {
   opacity: 0;
 }
 
-/* START is written in the particles; this lies over it, so it can be tapped or reached from the keyboard. */
+/* START is written in the particles; this lies over it, so it can be pressed, tapped or reached from the keyboard. */
 #play {
   position: fixed;
   z-index: 3;
@@ -427,7 +417,7 @@ body {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  cursor: pointer;
+  cursor: none;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -449,84 +439,100 @@ body {
 #room.intro #voice,
 #room.intro #mute,
 #room.intro #disclaimer,
-#room.intro #center-ring {
+#room.parted #voice,
+#room.parted #hint {
   opacity: 0;
 }
 
-/* The card after GOODBYE. */
-#endcard {
+/* Once the spirit has gone the planchette rests, and the pointer is the pointer again. */
+#room.parted {
+  cursor: default;
+}
+
+#hint {
+  transition: opacity 0.6s ease;
+}
+
+/* The farewell after GOODBYE: the sitter in porcelain, reaching out to the spirit, and a few words. */
+#farewell {
   position: fixed;
   inset: 0;
   z-index: 5;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: radial-gradient(circle, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.94));
-  cursor: pointer;
-  animation: appear 1.4s ease both;
+  pointer-events: none;
 }
 
-#endcard[hidden] {
+#farewell[hidden] {
   display: none;
 }
 
-#endcard .card {
-  width: min(100%, 420px);
-  padding: 34px 26px 26px;
+#farewell::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 38vh;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+  animation: appear 2s ease both;
+}
+
+#farewell .sitter {
+  position: absolute;
+  filter: drop-shadow(0 0 28px rgba(185, 200, 255, 0.22)) drop-shadow(0 22px 26px rgba(0, 0, 0, 0.8));
+  animation: appear 1.8s ease both;
+}
+
+#farewell .sitter svg {
+  display: block;
+  overflow: visible;
+}
+
+#farewell .words {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: max(6vh, 28px, env(safe-area-inset-bottom, 0px));
   text-align: center;
+  pointer-events: auto;
+  animation: appear 1.6s ease 1.4s both;
 }
 
-/* A ring of light in the color the candle burned. */
-.endcard-halo {
-  width: 104px;
-  height: 104px;
-  margin: 0 auto;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    transparent 50%,
-    rgba(var(--spirit-rgb), 0.15) 58%,
-    rgba(var(--spirit-rgb), 0.9) 64%,
-    rgba(var(--spirit-rgb), 0.15) 70%,
-    transparent 78%
-  );
-  filter: drop-shadow(0 0 14px rgba(var(--spirit-rgb), 0.7));
-}
-
-.endcard-name {
-  margin: 18px 0 8px;
+.farewell-line {
+  margin: 0;
   font-family: var(--serif);
   font-weight: 700;
-  font-size: clamp(24px, 6vw, 32px);
-  letter-spacing: 0.12em;
-  color: var(--spirit-light);
-  text-shadow: 0 0 18px rgba(var(--spirit-rgb), 0.6);
+  font-size: clamp(18px, 3.4vmin, 30px);
+  line-height: 1.35;
+  letter-spacing: 0.08em;
+  color: rgba(236, 238, 243, 0.92);
+  text-shadow: 0 0 18px rgba(185, 200, 255, 0.35);
 }
 
-.endcard-epitaph {
-  margin: 0 0 20px;
-  font-size: 16px;
-  line-height: 1.5;
-  letter-spacing: 0.04em;
-  color: rgba(236, 238, 243, 0.85);
-}
-
-.endcard-stats {
-  margin: 0;
-  white-space: pre-line;
-  line-height: 1.8;
-  font-size: 11px;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
+.farewell-line.soft {
+  margin-top: 4px;
+  font-size: clamp(13px, 2.2vmin, 18px);
   color: rgba(236, 238, 243, 0.55);
 }
 
-.endcard-again {
-  margin: 24px 0 0;
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  color: rgba(236, 238, 243, 0.65);
-  animation: breathe 2.6s ease-in-out infinite;
+#restart {
+  margin-top: 22px;
+  padding: 11px 28px;
+  border: 1px solid rgba(236, 238, 243, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #eef0f6;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+#restart:hover,
+#restart:focus-visible {
+  border-color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
 }
 
 @keyframes appear {
@@ -535,11 +541,6 @@ body {
   }
 }
 
-@keyframes breathe {
-  50% {
-    opacity: 0.35;
-  }
-}
 
 /* Phones held sideways: every pixel of height goes to the board. */
 @media (max-height: 520px) {
@@ -559,8 +560,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #center-ring.beckon,
-  .endcard-again {
+  #farewell::before,
+  #farewell .sitter,
+  #farewell .words {
     animation: none;
   }
 }

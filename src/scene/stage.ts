@@ -3,7 +3,7 @@
 // the board's box on the page, so the particles line up with everything the page
 // draws over them. World space is board space with y pointing up: (x, -y, z).
 
-import { PerspectiveCamera, Scene, WebGLRenderer } from "three";
+import { PerspectiveCamera, Scene, Vector3, WebGLRenderer } from "three";
 import type { BoardLayout } from "../board/layout";
 
 const FOV = 35;
@@ -30,6 +30,7 @@ export class Stage {
   private fitted = "";
   /** A share of the screen's resolution to draw at: lowered on devices that can't keep up. */
   private detail = 1;
+  private readonly point = new Vector3();
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance" });
@@ -77,6 +78,13 @@ export class Stage {
     this.detail *= 0.8;
     this.fitted = "";
     return true;
+  }
+
+  /** Where a point in the world shows on the page, in CSS pixels from the window's top left, as of the last frame drawn. */
+  project(x: number, y: number, z: number): { x: number; y: number } {
+    this.camera.updateMatrixWorld();
+    const p = this.point.set(x, y, z).project(this.camera);
+    return { x: ((p.x + 1) / 2) * innerWidth, y: ((1 - p.y) / 2) * innerHeight };
   }
 
   /** Draws a frame, the camera nudged by (dx, dy) board units for a shudder. */

@@ -9,7 +9,7 @@ describe.each(kinds)("%s layout", (kind) => {
 
   it("has every glyph exactly once", () => {
     const ids = layout.elements.map((el) => el.id).sort();
-    const expected = [...LETTERS, ...DIGITS, "YES", "NO", "GOODBYE", "CENTER"].sort();
+    const expected = [...LETTERS, ...DIGITS, "YES", "NO", "GOODBYE"].sort();
     expect(ids).toEqual(expected);
   });
 
@@ -39,23 +39,14 @@ describe.each(kinds)("%s layout", (kind) => {
     }
   });
 
-  it("rests the planchette on the center, where resting sends the question", () => {
-    expect(hitTest(layout, layout.rest.x, layout.rest.y)?.id).toBe("CENTER");
+  it("rests the planchette in the open, clear of every glyph", () => {
+    expect(hitTest(layout, layout.rest.x, layout.rest.y)).toBeNull();
   });
 
   it("finds each glyph at its own centre", () => {
     for (const el of layout.elements) {
       expect(hitTest(layout, el.x, el.y)?.id).toBe(el.id);
     }
-  });
-
-  it("writes START over the center, and has the planchette wait clear of every glyph", () => {
-    expect(hitTest(layout, layout.start.x, layout.start.y)?.id).toBe("CENTER");
-    expect(hitTest(layout, layout.waiting.x, layout.waiting.y)).toBeNull();
-    const s = layout.planchetteScale;
-    // The planchette's porcelain, around its window, stays on the board while it waits.
-    expect(layout.waiting.x + 110 * s).toBeLessThanOrEqual(layout.width);
-    expect(layout.waiting.y + 100 * s).toBeLessThanOrEqual(layout.height);
   });
 
   it("keeps the candle clear of the glyphs", () => {

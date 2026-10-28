@@ -4,7 +4,7 @@
 import { DIGITS } from "../../shared/text";
 
 export type LayoutKind = "wide" | "tall";
-export type ElementKind = "letter" | "digit" | "word" | "action";
+export type ElementKind = "letter" | "digit" | "word";
 
 export interface Point {
   x: number;
@@ -12,7 +12,7 @@ export interface Point {
 }
 
 export interface BoardElement {
-  /** "A".."Z", "0".."9", "YES", "NO", "GOODBYE", or "CENTER" (where the planchette rests). */
+  /** "A".."Z", "0".."9", "YES", "NO" or "GOODBYE". */
   id: string;
   kind: ElementKind;
   label: string;
@@ -31,12 +31,8 @@ export interface BoardLayout {
   width: number;
   height: number;
   elements: BoardElement[];
-  /** Where the planchette sleeps: the CENTER glyph, where resting sends what was spelled. */
+  /** Where the planchette rests when no pointer is guiding it: the open middle of the board. */
   rest: Point;
-  /** Where the planchette waits before the séance, off to one side of the letters. */
-  waiting: Point;
-  /** Where START is written before the séance (over the center), and how far from it the glass still counts as on it. */
-  start: Point & { rx: number; ry: number; size: number };
   /** The candle: the middle of its base, and its height. It may stand just off the board, in the margin. */
   candle: Point & { h: number };
   planchetteScale: number;
@@ -111,7 +107,6 @@ function wideLayout(): BoardLayout {
     ...arc({ letters: "NOPQRSTUVWXYZ", ...arcThrough({ x: 900, y: 500 }, 680, 120), size: 118 }),
     ...digitRow(830, 470, 1330, 100),
     word("GOODBYE", "GOODBYE", "word", 900, 940, 190, 54, 82),
-    word("CENTER", "", "action", 900, 700, 78, 78, 0),
   ];
   return {
     kind: "wide",
@@ -119,9 +114,7 @@ function wideLayout(): BoardLayout {
     height,
     elements,
     rest: { x: 900, y: 700 },
-    waiting: { x: 1620, y: 870 },
-    start: { x: 900, y: 700, rx: 250, ry: 80, size: 132 },
-    candle: { x: 96, y: 975, h: 280 },
+    candle: { x: 150, y: 975, h: 250 },
     planchetteScale: 1,
   };
 }
@@ -137,7 +130,6 @@ function tallLayout(): BoardLayout {
     ...arc({ letters: "STUVWXYZ", ...arcThrough({ x: 500, y: 650 }, 370, 80), size: 112 }),
     ...digitRow(1060, 90, 910, 92),
     word("GOODBYE", "GOODBYE", "word", 500, 1190, 170, 54, 76),
-    word("CENTER", "", "action", 500, 880, 74, 74, 0),
   ];
   return {
     kind: "tall",
@@ -145,9 +137,7 @@ function tallLayout(): BoardLayout {
     height,
     elements,
     rest: { x: 500, y: 880 },
-    waiting: { x: 820, y: 1350 },
-    start: { x: 500, y: 880, rx: 210, ry: 72, size: 112 },
-    candle: { x: 105, y: 1460, h: 200 },
+    candle: { x: 140, y: 1460, h: 190 },
     planchetteScale: 0.85,
   };
 }
