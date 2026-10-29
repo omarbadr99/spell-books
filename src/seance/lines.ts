@@ -1,6 +1,6 @@
-// The writing above the board: the sitters' message as they spell it, and the
-// spirit's glowing reply, which take turns in the same place. Voice says whose
-// turn it is.
+// The writing above the board: the sitters' message as they spell it, in
+// white, and the spirit's reply, glowing in the candle's color, which take
+// turns in the same place. Voice says whose turn it is.
 
 const SOAK_STAGGER_MS = 45;
 const SOAK_MS = 1100;
@@ -121,14 +121,9 @@ export class SpiritLine {
   }
 }
 
-/** Whose words show above the board, and the label over them: the sitters' message, or the spirit. */
+/** Whose words show above the board: the sitters' message, or the spirit's. */
 export class Voice {
-  private name: string | null = null;
-
-  constructor(
-    private readonly el: HTMLElement,
-    private readonly label: HTMLElement,
-  ) {
+  constructor(private readonly el: HTMLElement) {
     this.sitters();
   }
 
@@ -138,17 +133,9 @@ export class Voice {
 
   sitters(): void {
     this.el.dataset.speaker = "sitters";
-    this.label.textContent = "Your message";
   }
 
   spirit(): void {
     this.el.dataset.speaker = "spirit";
-    this.label.textContent = this.name ?? "The spirit";
-  }
-
-  /** Once the spirit gives its name, its words go under that name. */
-  setName(name: string | null): void {
-    this.name = name;
-    if (this.speaker === "spirit") this.label.textContent = name ?? "The spirit";
   }
 }

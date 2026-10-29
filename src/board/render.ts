@@ -42,7 +42,6 @@ const PATHS = {
   gather: [0.25, 0.08, 0],
   burst: [1.1, 0.95, 1],
   scatter: [0.7, 0.3, 0],
-  regather: [0.45, 0.2, 0],
   settle: [0.3, 0.1, 1],
 } as const satisfies Record<string, readonly [number, number, number]>;
 type Path = keyof typeof PATHS;
@@ -147,6 +146,9 @@ export class BoardView {
   /** The picture the points make, and the flight to the next one while they are on their way. */
   private shown: Formation = FORMATION.dust;
   private flight: Flight | null = null;
+  /** How far RESTART has gathered under the farewell's land, 0..1, and the wait for it to finish. */
+  private gathered = 0;
+  private gathering: { seconds: number; done: () => void } | null = null;
   private path: Path = "gather";
   private near = 0;
   private nearTarget = 0;
@@ -214,7 +216,7 @@ export class BoardView {
     shared.uBoard.value.set(layout.width / 2, -layout.height / 2, layout.width / 2, layout.height / 2);
     shared.uCurve.value = layout.kind === "wide" ? 1 : 0.5;
 
-    if (this.board) this.stage.scene.remove(this.board.points, ...(this.board.dust ? [this.board.dust] : []));
+    if (this.board) this.stage.scene.remove(...layers(this.board));
     let board = this.boards.get(layout.kind);
     if (!board) {
       const aspect = this.aspect;
@@ -223,7 +225,7 @@ export class BoardView {
       this.boards.set(layout.kind, board);
     }
     this.board = board;
-    this.stage.scene.add(board.points, ...(board.dust ? [board.dust] : []));
+    this.stage.scene.add(...layers(board));
     // A board made while the farewell shows needs its places in it now.
     if (this.shown === FORMATION.farewell || this.flight?.to === FORMATION.farewell) this.prepare(Infinity);
     // A board for a turned phone comes together out of the dust; otherwise it makes the same picture the old one did.
@@ -248,12 +250,9 @@ export class BoardView {
 
   /** Throws away the particles and samples the glyphs again, e.g. once the board's font has arrived. */
   resample(): void {
-    for (const board of this.boards.values()) {
-      board.points.geometry.dispose();
-      board.dust?.geometry.dispose();
-    }
+    for (const board of this.boards.values()) for (const layer of layers(board)) layer.geometry.dispose();
     this.boards.clear();
-    if (this.board) this.stage.scene.remove(this.board.points, ...(this.board.dust ? [this.board.dust] : []));
+    if (this.board) this.stage.scene.remove(...layers(this.board));
     this.board = null;
     this.setLayout(this.layout);
   }
@@ -303,10 +302,24 @@ export class BoardView {
     return this.fly(FORMATION.board, calm ? 0.01 : 3.8, "burst");
   }
 
-  /** The board breaks up into the farewell: the land, the stream of light, and the sitter and the spirit holding hands. */
-  farewell(calm: boolean): Promise<void> {
+  /**
+   * The board breaks up into the farewell: the land, the stream of light, and
+   * the sitter and the spirit holding hands. Resolves once the land has formed
+   * and RESTART has gathered under it.
+   */
+  async farewell(calm: boolean): Promise<void> {
     this.prepare(Infinity);
-    return this.fly(FORMATION.farewell, calm ? 0.01 : 4.4, "scatter");
+    this.gathered = 0;
+    await this.fly(FORMATION.farewell, calm ? 0.01 : 4.4, "scatter");
+    if (this.shown !== FORMATION.farewell) return;
+    await new Promise<void>((done) => (this.gathering = { seconds: calm ? 0.01 : 1.8, done }));
+  }
+
+  /** RESTART bursts, and the land flies back together into the board, ready for another séance. */
+  reopen(calm: boolean): Promise<void> {
+    this.gathering?.done();
+    this.gathering = null;
+    return this.fly(FORMATION.board, calm ? 0.01 : 3.8, "burst");
   }
 
   /**
@@ -330,11 +343,6 @@ export class BoardView {
     }
   }
 
-  /** And back together into START, for another séance. */
-  again(calm: boolean): Promise<void> {
-    return this.fly(FORMATION.start, calm ? 0.01 : 3.6, "regather");
-  }
-
   /** The sitters are in a hurry: the points fly the rest of the way quickly. */
   hurry(): void {
     if (this.flight) this.flight.hurry = true;
@@ -345,14 +353,14 @@ export class BoardView {
     return this.flight !== null || this.shown !== FORMATION.board;
   }
 
-  /** How close the planchette's glass is to START, 0..1: START stirs and brightens as it comes. */
-  nearStart(amount: number): void {
+  /** How close the planchette's glass is to START or RESTART, 0..1: the word stirs and brightens as it comes. */
+  nearWord(amount: number): void {
     this.nearTarget = amount;
   }
 
-  /** Where START is on the page, in CSS pixels. */
-  startBox(): { left: number; top: number; right: number; bottom: number } {
-    const box = this.board?.start ?? { x0: -0.5, y0: -0.15, x1: 0.5, y1: 0.15 };
+  /** Where START, or RESTART under the farewell's land, is written on the page, in CSS pixels. */
+  wordBox(word: "start" | "restart"): { left: number; top: number; right: number; bottom: number } {
+    const box = (word === "start" ? this.board?.start : this.board?.restart.box) ?? { x0: -0.5, y0: -0.15, x1: 0.5, y1: 0.15 };
     const a = this.fromView(box.x0, box.y1);
     const b = this.fromView(box.x1, box.y0);
     return { left: a.x, top: a.y, right: b.x, bottom: b.y };
@@ -494,6 +502,20 @@ export class BoardView {
     // Once the land is all there, what it has cleared from the dark needn't be drawn at all.
     const cleared = land > 0.999;
     for (const layer of [...this.space.layers, this.streams.points, this.air.points]) layer.visible = !cleared;
+    // RESTART gathers under the land once it has formed, and bursts as the board flies back together.
+    if (this.gathering) {
+      this.gathered = Math.min(1, this.gathered + dt / this.gathering.seconds);
+      if (this.gathered >= 1) {
+        this.gathering.done();
+        this.gathering = null;
+      }
+    }
+    const again = this.board.restart.points;
+    const leaving = flight?.from === FORMATION.farewell;
+    again.visible = this.gathered > 0 && (leaving || (this.shown === FORMATION.farewell && !flight));
+    again.material.uniforms.uGather.value = this.gathered;
+    again.material.uniforms.uNear.value = this.near;
+    again.material.uniforms.uBurst.value = leaving ? Math.min(1, progress / 0.55) : 0;
     const hole = bend(this.pos.x, -this.pos.y, 0, this.frame());
     (uniforms.uHole.value as Vector3).set(hole[0], hole[1], onBoard && this.planchetteShown ? 1 : 0);
 
@@ -695,6 +717,11 @@ export class BoardView {
     this.light.setColor(hex);
     for (const stop of this.planchette.querySelectorAll(".pl-warm-stop")) stop.setAttribute("stop-color", hex);
   }
+}
+
+/** Every layer a board draws: its points, RESTART, and the farewell's extra dust once there is some. */
+function layers(board: Built): Points<BufferGeometry, ShaderMaterial>[] {
+  return [board.points, board.restart.points, ...(board.dust ? [board.dust] : [])];
 }
 
 /** Fills a ring round the planchette's window to `progress`. */

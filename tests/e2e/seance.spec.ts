@@ -1,10 +1,12 @@
 // A whole séance in the browser with the canned spirit: START, the lock, words
 // that are not a greeting (nothing comes), lighting the candle with a hello,
-// asking, rubbing out a letter, goodbye and the farewell, and back to START.
+// asking, rubbing out a letter, goodbye and the farewell, and RESTART straight
+// back to the board, where asking to see the spirit sends her away again.
 // The planchette is the pointer: the tests spell by resting the mouse on each
 // glyph, and send by resting a little longer. The spirit runs 5× faster than life.
 
 import { expect, test, type Page } from "@playwright/test";
+import { MOCK_GREETINGS } from "../../worker/mock";
 
 declare global {
   interface Window {
@@ -20,6 +22,7 @@ declare global {
       speaker(): string;
       forming(): boolean;
       start(): { x: number; y: number };
+      restart(): { x: number; y: number };
       visited(): number;
       since(from: number): string[];
     };
@@ -78,6 +81,14 @@ async function spell(page: Page, ...ids: string[]) {
   }
 }
 
+/** Chooses glyphs at once, by clicking each in turn. */
+async function click(page: Page, word: string) {
+  for (const id of word) {
+    const target = (await glyph(page, id))!;
+    await page.mouse.click(target.x, target.y);
+  }
+}
+
 /** Keeps the glass still until what was spelled goes. */
 const rest = (page: Page) => page.waitForTimeout(SEND_MS);
 
@@ -90,7 +101,7 @@ async function begin(page: Page) {
   await expect(page.locator("#play")).toBeHidden();
 }
 
-test("a séance from START to the farewell and back", async ({ page }, testInfo) => {
+test("a séance from START to the farewell, and RESTART back to the board", async ({ page }, testInfo) => {
   await page.goto(`/?speed=${SPEED}`);
   await phaseBecomes(page, "locked");
   await begin(page);
@@ -111,10 +122,10 @@ test("a séance from START to the farewell and back", async ({ page }, testInfo)
   await expect(page.locator("#room.candles-lit")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("dark.png") });
 
-  // Words that aren't a greeting fade away, and nothing comes.
+  // Words that aren't a greeting fade away, and nothing comes. Nothing is written under the board to explain.
   await spell(page, "A", "B");
   await rest(page);
-  await expect(page.locator("#hint")).toContainText("only comes when greeted");
+  await expect(page.locator("#hint")).toHaveCount(0);
   expect(await page.evaluate(() => window.__board.phase())).toBe("dormant");
   expect(await ink(page)).toBe("");
   await expect(page.locator("#room.candles-lit")).toHaveCount(0);
@@ -127,8 +138,10 @@ test("a séance from START to the farewell and back", async ({ page }, testInfo)
   expect(await page.evaluate(() => window.__board.spirit())).toBeTruthy();
   await expect(page.locator("#room.candles-lit")).toHaveCount(1);
   await passesThrough(page, from, "summoning", "listening");
-  expect((await spiritLine(page)).trim()).toBe("WHAT NOW");
-  expect(await page.evaluate(() => window.__board.speaker())).toBe("spirit:The spirit");
+  // In whichever mood she is in tonight. Her words show in the candle's color, with no label over them.
+  expect(MOCK_GREETINGS).toContain((await spiritLine(page)).trim());
+  expect(await page.evaluate(() => window.__board.speaker())).toBe("spirit");
+  await expect(page.locator("#voice-label")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("listening.png") });
 
   // A yes/no question lands on YES. While the spirit has the planchette, the pointer can't move it;
@@ -147,21 +160,18 @@ test("a séance from START to the farewell and back", async ({ page }, testInfo)
     return Math.hypot(at.x - 40, at.y - 40) < 12;
   });
 
-  // A click chooses a glyph at once; and once the spirit gives its name, its words go under it.
-  for (const id of ["W", "H", "O"]) {
-    const g = (await glyph(page, id))!;
-    await page.mouse.click(g.x, g.y);
-  }
+  // A click chooses a glyph at once; asked who she is, she gives her name.
+  await click(page, "WHO");
   expect(await ink(page)).toBe("WHO");
   from = await mark(page);
   await rest(page);
   await passesThrough(page, from, "asking", "answering", "listening");
-  expect(await page.evaluate(() => window.__board.speaker())).toBe("spirit:Mavis");
+  expect(await spiritLine(page)).toBe("MAVIS");
 
   // Spelling again turns the line back to the sitters' message; tapping it rubs out the last letter.
   await spell(page, "X", "Y");
   expect(await ink(page)).toBe("XY");
-  expect(await page.evaluate(() => window.__board.speaker())).toBe("sitters:Your message");
+  expect(await page.evaluate(() => window.__board.speaker())).toBe("sitters");
   await page.locator("#voice").click();
   expect(await ink(page)).toBe("X");
   await page.locator("#voice").click();
@@ -174,17 +184,33 @@ test("a séance from START to the farewell and back", async ({ page }, testInfo)
   await passesThrough(page, from, "ending", "ended");
   expect(await page.evaluate((start) => window.__board.since(start), from)).not.toContain("answering");
   await expect(page.locator("#room.candles-lit")).toHaveCount(0);
-  await expect(page.locator("#farewell")).toBeVisible();
-  await expect(page.locator("#farewell")).toContainText("It was nice to meet you.");
-  await page.waitForTimeout(3000);
+  expect(await page.evaluate(() => window.__board.scene())).toBe("farewell");
+  // Just the land, and RESTART written under it, which can be pressed once it has gathered.
+  const restart = page.getByRole("button", { name: "Restart the séance" });
+  await expect(restart).toBeVisible({ timeout: 20_000 });
   await page.screenshot({ path: testInfo.outputPath("farewell.png") });
 
-  // Restart flies the farewell back into START, and START begins another séance.
-  await page.getByRole("button", { name: "Restart" }).click();
-  await expect(page.locator("#farewell")).toBeHidden();
-  await expect(page.locator("#play")).toBeVisible();
-  await begin(page);
+  // RESTART flies the land straight back into the board (not to START), ready for another séance.
+  const again = await page.evaluate(() => window.__board.restart());
+  await page.mouse.click(again.x, again.y);
+  await expect(restart).toBeHidden();
+  await page.waitForFunction(() => !window.__board.forming(), null, { timeout: 30_000 });
+  expect(await page.evaluate(() => window.__board.scene())).toBe("board");
+  await expect(page.locator("#play")).toBeHidden();
   await phaseBecomes(page, "dormant");
+
+  // A new séance, where asking to see her face sends the spirit away with a GOODBYE.
+  from = await mark(page);
+  await spell(page, "H", "I");
+  await rest(page);
+  await passesThrough(page, from, "summoning", "listening");
+  await click(page, "SHOWYOURFACE");
+  expect(await ink(page)).toBe("SHOWYOURFACE");
+  from = await mark(page);
+  await rest(page);
+  await passesThrough(page, from, "asking", "answering", "ending", "ended");
+  expect(await lastTarget(page)).toBe("GOODBYE");
+  await expect(restart).toBeVisible({ timeout: 20_000 });
 });
 
 test("a device that already knows the word skips the lock", async ({ page, context }) => {
@@ -197,7 +223,7 @@ test("a device that already knows the word skips the lock", async ({ page, conte
 test("the dust gathers into START, which waits to be pressed", async ({ page }) => {
   await page.goto(`/?speed=${SPEED}`);
   await phaseBecomes(page, "locked", "dormant");
-  await expect(page.locator("#hint")).toHaveText("Press START to begin.", { timeout: 30_000 });
+  await expect(page.locator("#play")).toBeVisible();
   // Clicking the dark does nothing, and the planchette, as the pointer, follows the mouse.
   await page.mouse.click(200, 200);
   expect(await page.evaluate(() => window.__board.scene())).toBe("start");
@@ -211,5 +237,4 @@ test("the dust gathers into START, which waits to be pressed", async ({ page }) 
   await page.waitForFunction(() => !window.__board.forming(), null, { timeout: 30_000 });
   await expect(page.locator("#room.intro")).toHaveCount(0);
   await expect(page.locator("#play")).toBeHidden();
-  await expect(page.locator("#hint")).not.toHaveText("Press START to begin.");
 });

@@ -150,6 +150,28 @@ describe("asking the spirit", () => {
     ]);
   });
 
+  it("carries the spirit's mood for the séance, or the first mood for one it doesn't know", async () => {
+    const env = makeEnv();
+    for (const [mood, expected] of [[3, 3], [99, 0], ["sad", 0]] as const) {
+      const { create, deps } = fakeClaude(message([{ type: "text", text: "NO" }]));
+      await handleApi(req("POST", "/api/ask", { ...goodAsk, mood }, await seatFor(env)), env, deps);
+      expect(create.mock.calls[0][0].messages[0]).toEqual({ role: "user", content: opening("HELLO", expected) });
+    }
+  });
+
+  it("leaves when asked to show herself, without asking Claude", async () => {
+    const env = makeEnv();
+    const res = await handleApi(req("POST", "/api/ask", { ...goodAsk, question: "show your face" }, await seatFor(env)), env, noClaude);
+    expect(await res.json()).toEqual({ reply: "GOODBYE" });
+  });
+
+  it("says no plainly", async () => {
+    const env = makeEnv();
+    const { deps } = fakeClaude(message([{ type: "text", text: "Nope." }]));
+    const res = await handleApi(req("POST", "/api/ask", { ...goodAsk, question: "will i be rich" }, await seatFor(env)), env, deps);
+    expect(await res.json()).toEqual({ reply: "NO" });
+  });
+
   it("lets the quick model answer when the spirit's own is too slow", async () => {
     const env = makeEnv();
     const create = vi

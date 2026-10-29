@@ -24,8 +24,18 @@ export type Effort = "low" | "medium" | "high";
 /** The smallest model has no server-side fallback; the others do. */
 export const hasServerFallback = (model: string) => !model.startsWith("claude-haiku");
 
-/** The request every question sends. The tone sampler uses it too, so tuning matches the live board. */
-export function spiritRequest(model: string, persona: SpiritPersona, history: Turn[], question: string, effort: Effort = "low"): CreateParams {
+/**
+ * The request every question sends, in the spirit's mood for the séance (see
+ * MOOD_COUNT). The tone sampler uses it too, so tuning matches the live board.
+ */
+export function spiritRequest(
+  model: string,
+  persona: SpiritPersona,
+  history: Turn[],
+  question: string,
+  effort: Effort = "low",
+  mood = 0,
+): CreateParams {
   return {
     model,
     // Thinking is on by default and counts toward this; the reply itself is a few words.
@@ -33,7 +43,7 @@ export function spiritRequest(model: string, persona: SpiritPersona, history: Tu
     output_config: { effort },
     cache_control: { type: "ephemeral" },
     system: buildSystemPrompt(persona),
-    messages: conversation(history, question),
+    messages: conversation(history, question, mood, persona),
     // If a safety classifier declines, another model answers in the same call instead.
     ...(hasServerFallback(model) && { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
   };
@@ -57,11 +67,12 @@ export async function askSpirit(
   persona: SpiritPersona,
   history: Turn[],
   question: string,
+  mood = 0,
 ): Promise<SpiritAnswer> {
   try {
     let response: Anthropic.Beta.Messages.BetaMessage;
     try {
-      response = await client.beta.messages.create(spiritRequest(model, persona, history, question), {
+      response = await client.beta.messages.create(spiritRequest(model, persona, history, question, "low", mood), {
         timeout: PATIENCE_MS,
         maxRetries: 0,
       });
@@ -70,7 +81,7 @@ export async function askSpirit(
       if (model === QUICK_MODEL || !slowOrBusy) throw error;
       // A quicker voice answers for the spirit rather than leave the sitters waiting.
       console.warn(`${model} was too slow or busy; the quick model answered instead.`);
-      response = await client.beta.messages.create(spiritRequest(QUICK_MODEL, persona, history, question), {
+      response = await client.beta.messages.create(spiritRequest(QUICK_MODEL, persona, history, question, "low", mood), {
         timeout: PATIENCE_MS,
         maxRetries: 0,
       });

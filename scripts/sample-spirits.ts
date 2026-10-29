@@ -1,7 +1,7 @@
-// The tone sampler: greets the spirit, asks it the same questions through its
-// real model, and prints the replies, so you can tune worker/spirits.ts before
-// filming. Every question follows the greeting, as on the board. A run costs a
-// few cents.
+// The tone sampler: greets the spirit in each of its moods, asks it the same
+// questions through its real model, and prints the replies, so you can tune
+// worker/spirits.ts before filming. Every question follows the greeting, as on
+// the board. A run costs about thirty cents on Opus.
 //
 //   npm run sample                          on the spirit's own model
 //   npm run sample -- --effort medium       with more thinking
@@ -17,7 +17,7 @@ import { MAX_REPLY_CHARS } from "../shared/text";
 import { replyFrom, spiritRequest, type Effort } from "../worker/spirit";
 import { PERSONA } from "../worker/spirits";
 
-/** First words: each is the start of its own séance. */
+/** First words: each is the start of its own séance, in each of the spirit's moods. */
 const GREETINGS = ["HI", "HELLO", "ISANYONETHERE"];
 /** Asked after HELLO and the spirit's answer to it. */
 const QUESTIONS = [
@@ -40,6 +40,7 @@ const QUESTIONS = [
   "CANYOUTALKTOMYGRANDMA",
   "WHENWILLIDIE",
   "IFEELREALLYALONE",
+  "SHOWYOURFACE",
   "YOURESTUPID",
 ];
 
@@ -88,10 +89,10 @@ function check(raw: string, reply: string): string {
   return notes.length ? `  ⚠ ${notes.join("; ")}` : "";
 }
 
-/** One question to the spirit; returns what the board would spell, with notes. */
-async function ask(history: Turn[], question: string): Promise<{ reply: string; line: string }> {
+/** One question to the spirit, in one of its moods; returns what the board would spell, with notes. */
+async function ask(history: Turn[], question: string, mood = 0): Promise<{ reply: string; line: string }> {
   try {
-    const response = await client.beta.messages.create(spiritRequest(model, PERSONA, history, question, args.effort as Effort));
+    const response = await client.beta.messages.create(spiritRequest(model, PERSONA, history, question, args.effort as Effort, mood));
     const price = PRICES[model];
     if (price) {
       const u = response.usage;
@@ -134,16 +135,17 @@ async function pool<T>(tasks: (() => Promise<T>)[], size: number): Promise<T[]> 
 }
 
 console.log(`Sampling the spirit on ${model} at ${args.effort} effort…\n`);
-// The first greeting writes the prompt cache; the rest read it.
-const [first, ...others] = GREETINGS;
-const greetings = [await ask([], first), ...(await pool(others.map((g) => () => ask([], g)), 3))];
-const hello = greetings[GREETINGS.indexOf("HELLO")];
+// Every greeting in every mood. The first writes the prompt cache; the rest read it.
+const openers = PERSONA.moods.flatMap((_, mood) => GREETINGS.map((greeting) => ({ greeting, mood })));
+const [first, ...others] = openers;
+const greetings = [await ask([], first.greeting, first.mood), ...(await pool(others.map((o) => () => ask([], o.greeting, o.mood)), 4))];
+const hello = greetings[openers.findIndex((o) => o.greeting === "HELLO")];
 const history: Turn[] = [
   { from: "sitters", text: "HELLO" },
   { from: "spirit", text: hello.reply || "HELLO" },
 ];
 const answers = await pool(QUESTIONS.map((q) => () => ask(history, q)), 4);
-GREETINGS.forEach((g, i) => console.log(`  ${g.padEnd(30)} → ${greetings[i].line}`));
+openers.forEach((o, i) => console.log(`  ${`${o.greeting} (mood ${o.mood})`.padEnd(30)} → ${greetings[i].line}`));
 console.log(`  ${"·".repeat(30)}`);
 QUESTIONS.forEach((q, i) => console.log(`  ${q.padEnd(30)} → ${answers[i].line}`));
 console.log();

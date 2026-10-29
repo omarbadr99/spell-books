@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { CANDLELIGHT, SPIRIT } from "../../shared/presence";
+import { MOOD_COUNT } from "../../shared/seance";
 import { isGreeting, MAX_REPLY_CHARS, normalizeBoardWord, sanitizeReply } from "../../shared/text";
-import { mockReply } from "../../worker/mock";
+import { MOCK_GREETINGS, mockReply } from "../../worker/mock";
 import { buildSystemPrompt, conversation, opening, PERSONA } from "../../worker/spirits";
 
 const boardClean = (line: string) => {
@@ -53,6 +54,20 @@ describe("the spirit", () => {
     expect(prompt).toContain("Answer at once, without deliberating.");
     expect(prompt).toContain("MAVIS");
     expect(prompt).toContain("WHOAREYOU → MAVIS");
+    // A no is a plain NO, and asking to see her sends her away.
+    expect(prompt).toContain("A no is always a plain NO");
+    expect(prompt).not.toMatch(/\(.*NOPE.*\)/);
+    expect(prompt).toContain("SHOWYOURFACE → GOODBYE");
+  });
+
+  it("is in a different mood each séance, which sets the scene for her greeting", () => {
+    expect(PERSONA.moods).toHaveLength(MOOD_COUNT);
+    const openings = new Set(PERSONA.moods.map((_, mood) => opening("HI", mood)));
+    expect(openings.size).toBe(MOOD_COUNT);
+    for (const line of openings) expect(line.endsWith("\nHI")).toBe(true);
+    // The mood stays with the séance: every question carries the same opening.
+    const later = conversation([{ from: "sitters", text: "HI" }, { from: "spirit", text: "WHAT" }], "WHO", 5);
+    expect(later[0].content).toBe(opening("HI", 5));
   });
 
   it("opens the conversation with the sitters' greeting", () => {
@@ -72,10 +87,13 @@ describe("the spirit", () => {
     ]);
   });
 
-  it("greets back in mock mode, then answers questions", () => {
+  it("greets back in mock mode, in each mood its own way, then answers questions", () => {
     const greeting = mockReply("HELLO", 0);
     boardClean(greeting);
     expect(greeting).not.toBe("GOODBYE");
+    expect(MOCK_GREETINGS).toHaveLength(MOOD_COUNT);
+    expect(new Set(MOCK_GREETINGS.map((_, mood) => mockReply("HI", 0, mood))).size).toBe(MOOD_COUNT);
+    for (const line of MOCK_GREETINGS) boardClean(line);
     expect(mockReply("WHOAREYOU", 2)).toBe("MAVIS");
     expect(mockReply("GOODBYE", 2)).toBe("GOODBYE");
     for (const q of ["WHATSFORDINNER", "TELLMESOMETHING", "HMM"]) boardClean(mockReply(q, 4));

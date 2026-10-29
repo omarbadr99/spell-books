@@ -267,7 +267,7 @@ float viewY(vec3 q) {
   return (y - ${n(FRAME.feet)}) * uFrame.x + ${n(FRAME.feet)};
 }
 
-/** The land fades out toward the bottom of the view, where the words are. */
+/** The land fades out toward the bottom of the view, where RESTART is written. */
 float landFade(vec3 q) {
   return smoothstep(${n(FRAME.feet - 1.25 * FRAME.tall)}, ${n(FRAME.feet - 0.4 * FRAME.tall)}, viewY(q));
 }

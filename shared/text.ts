@@ -23,10 +23,16 @@ export type SpiritMove =
   | { type: "glyph"; target: string; text: string }
   | { type: "space" };
 
+/** Slang for no and yes, which the board always says plainly: NOPE is NO, YEAH is YES. */
+const SLANG_NO = /^(NO+|NO+PE+S?|NOPERS|NAH+|NAW+|NAY+)$/;
+const SLANG_YES = /^(YES+|YE+P+|YEAH+|YUP+|YEA|YAS+)$/;
+const plainly = (word: string) => (SLANG_NO.test(word) ? "NO" : SLANG_YES.test(word) ? "YES" : word);
+
 /**
  * Turns anything a model might say into something the board can spell:
  * capitals, digits and single spaces, at most MAX_REPLY_WORDS words and
- * MAX_REPLY_CHARS long. A closing GOODBYE survives the cut.
+ * MAX_REPLY_CHARS long, with any way of saying no or yes as a plain NO or YES.
+ * A closing GOODBYE survives the cut.
  */
 export function sanitizeReply(raw: string): string {
   const words = raw
@@ -36,7 +42,8 @@ export function sanitizeReply(raw: string): string {
     .replace(/\bGOOD BYE\b/g, "GOODBYE")
     .trim()
     .split(" ")
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(plainly);
 
   const goodbye = words.length > 1 && words[words.length - 1] === "GOODBYE";
   const room = MAX_REPLY_WORDS - (goodbye ? 1 : 0);
@@ -128,19 +135,25 @@ export function isYesNoQuestion(question: string): boolean {
 }
 
 /**
- * A yes/no question gets a bare YES or NO: when the reply opens with one, the
- * rest is dropped (but a closing GOODBYE stays, since the spirit is leaving).
+ * A yes/no question gets a bare YES or NO: when the reply opens or closes with
+ * one (NO WAY, UGH NO), the rest is dropped, though a closing GOODBYE stays,
+ * since the spirit is leaving.
  */
 export function preferYesNo(question: string, reply: string): string {
-  const [first] = reply.split(" ");
-  if (!isYesNoQuestion(question) || (first !== "YES" && first !== "NO")) return reply;
-  return saysGoodbye(reply) ? `${first} GOODBYE` : first;
+  if (!isYesNoQuestion(question)) return reply;
+  const words = reply.split(" ").filter((word) => word !== "GOODBYE");
+  const yes = words.includes("YES");
+  if (yes === words.includes("NO")) return reply;
+  const answer = yes ? "YES" : "NO";
+  if (words[0] !== answer && words[words.length - 1] !== answer) return reply;
+  return saysGoodbye(reply) ? `${answer} GOODBYE` : answer;
 }
 
-/** True when the reply names the spirit (any of its reveal words, or the whole name run together). */
-export function revealsName(reply: string, revealWords: readonly string[], fullName: string): boolean {
-  const words = reply.split(" ");
-  if (revealWords.some((w) => words.includes(w))) return true;
-  const squashedName = normalizeBoardWord(fullName);
-  return squashedName.length > 0 && normalizeBoardWord(reply).includes(squashedName);
+/** Asking to see the spirit: SHOW YOUR FACE, SHOW YOURSELF, LET ME SEE YOU, APPEAR TO US. */
+const SEE_HER =
+  /SHOW(ME|US)?(YOUR|YOR|UR|YOU|YA|U)?(SELF|SELVES|FACE)|(SEE|LOOKAT)(YOUR|YOR|UR)FACE|^(CAN|COULD|MAY|LET)(I|WE|ME|US)SEEYOU(PLEASE|NOW)?$|APPEAR(TO|BEFORE)(ME|US)|MANIFEST/;
+
+/** True when the sitters ask to see the spirit, which she never allows: she leaves instead. */
+export function asksToSeeSpirit(question: string): boolean {
+  return SEE_HER.test(normalizeBoardWord(question).replace(/[0-9]/g, ""));
 }

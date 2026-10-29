@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAX_HISTORY, recentHistory, type Turn } from "../../shared/seance";
 import {
+  asksToSeeSpirit,
   isGreeting,
   isYesNoQuestion,
   MAX_QUESTION_CHARS,
@@ -8,7 +9,6 @@ import {
   normalizeBoardWord,
   preferYesNo,
   replyToMoves,
-  revealsName,
   sanitizeQuestion,
   sanitizeReply,
   saysGoodbye,
@@ -92,16 +92,10 @@ describe("replyToMoves", () => {
   });
 });
 
-describe("saysGoodbye / revealsName", () => {
+describe("saysGoodbye", () => {
   it("detects a goodbye anywhere in the reply", () => {
     expect(saysGoodbye("MIND YOUR MANNERS GOODBYE")).toBe(true);
     expect(saysGoodbye("GOODBYES ARE HARD")).toBe(false);
-  });
-
-  it("detects the spirit naming itself", () => {
-    expect(revealsName("SILAS CRANE KEEPER", ["SILAS", "CRANE"], "Silas Crane")).toBe(true);
-    expect(revealsName("I AM SILASCRANE", ["SILAS", "CRANE"], "Silas Crane")).toBe(true);
-    expect(revealsName("MY BROTHER KNEW", ["ANSELM"], "Brother Anselm")).toBe(false);
   });
 });
 
@@ -138,6 +132,36 @@ describe("isYesNoQuestion / preferYesNo", () => {
     expect(preferYesNo("AREYOUAGHOST", "NO NEVER GOODBYE")).toBe("NO GOODBYE");
     expect(preferYesNo("AREYOUAGHOST", "PERHAPS")).toBe("PERHAPS");
     expect(preferYesNo("WHOAREYOU", "YES WHO ASKS")).toBe("YES WHO ASKS");
+  });
+
+  it("also when the YES or NO comes last", () => {
+    expect(preferYesNo("AREYOUANGRY", "UGH NO")).toBe("NO");
+    expect(preferYesNo("WILLIBERICH", "OBVIOUSLY YES")).toBe("YES");
+    expect(preferYesNo("WILLIBERICH", "YES AND NO")).toBe("YES AND NO");
+    expect(preferYesNo("WILLIBERICH", "AS IF")).toBe("AS IF");
+  });
+});
+
+describe("plain answers", () => {
+  it("says no and yes plainly, however the model put it", () => {
+    for (const no of ["Nope.", "nah", "Naw!", "Nay", "Noooo", "NOPE"]) expect(sanitizeReply(no), no).toBe("NO");
+    for (const yes of ["Yeah.", "yep", "Yup!", "Yesss", "yea"]) expect(sanitizeReply(yes), yes).toBe("YES");
+    expect(sanitizeReply("nope, goodbye")).toBe("NO GOODBYE");
+    // Only whole words.
+    for (const word of ["NOON", "NOT", "YESTERDAY", "YEAR", "NAYSAYER"]) expect(sanitizeReply(word)).toBe(word);
+  });
+});
+
+describe("asksToSeeSpirit", () => {
+  it.each(["SHOWYOURFACE", "SHOW YOUR FACE PLEASE", "SHOWUSYOURFACE", "SHOWMEURFACE", "SHOWYOURSELF", "PLEASESHOWYOURSELF", "LETMESEEYOURFACE", "CANWESEEYOU", "APPEARTOUS", "WHYWONTYOUSHOWYOURFACE"])(
+    "knows %s asks to see her",
+    (text) => {
+      expect(asksToSeeSpirit(text)).toBe(true);
+    },
+  );
+
+  it.each(["WILLISEEYOUAGAIN", "HOWAREYOU", "WHATSYOURNAME", "FACEBOOK", "SHOWTIME", "AREYOUSHY"])("lets %s through", (text) => {
+    expect(asksToSeeSpirit(text)).toBe(false);
   });
 });
 

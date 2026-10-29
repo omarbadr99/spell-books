@@ -6,7 +6,7 @@
 // answer, a quick one answers for it so the séance never stalls.
 
 import { REFUSAL_REPLY } from "../../shared/seance";
-import { preferYesNo, sanitizeReply } from "../../shared/text";
+import { asksToSeeSpirit, preferYesNo, sanitizeReply } from "../../shared/text";
 import { mockReply } from "../../worker/mock";
 import { buildSystemPrompt, conversation, PERSONA } from "../../worker/spirits";
 import type { AskBody, AskResult, EnterResult, SeatState } from "../api";
@@ -76,17 +76,19 @@ export async function enter(): Promise<EnterResult> {
 }
 
 export async function ask(body: AskBody): Promise<AskResult> {
+  // Nobody sees the spirit: asked to, she leaves.
+  if (body.history.length && asksToSeeSpirit(body.question)) return { reply: "GOODBYE" };
   const sample = canned ? null : await samplePromise;
   if (!sample) {
     return {
-      reply: mockReply(body.question, body.history.length),
+      reply: mockReply(body.question, body.history.length, body.mood),
       note: "Claude isn't connected here, so the spirit is using canned replies.",
     };
   }
 
   // There is no system prompt here, so the spirit's rules lead the first message.
   const rules = `${buildSystemPrompt(PERSONA)}\n\nEvery message from the sitters is spelled on the board. Reply with only the words the planchette should spell.`;
-  const input = conversation(body.history, body.question).map((line, i) =>
+  const input = conversation(body.history, body.question, body.mood).map((line, i) =>
     i === 0 ? { ...line, content: `${rules}\n\n${line.content}` } : line,
   );
 
@@ -118,7 +120,7 @@ export async function ask(body: AskBody): Promise<AskResult> {
       case "capability_removed":
         canned = true;
         return {
-          reply: mockReply(body.question, body.history.length),
+          reply: mockReply(body.question, body.history.length, body.mood),
           note: "Claude isn't allowed for this board, so the spirit is using canned replies.",
         };
       default:

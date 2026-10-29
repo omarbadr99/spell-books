@@ -15,17 +15,17 @@
 
       <div id="stage">
         <header id="voice" title="Tap to rub out a letter">
-          <p id="voice-label">Your message</p>
           <div id="voice-lines">
             <p id="ink-line" aria-live="polite"></p>
             <p id="spirit-line" aria-live="polite"></p>
           </div>
         </header>
         <div id="table" role="img" aria-label="A talking board made of light, with a planchette"></div>
-        <p id="hint"></p>
       </div>
+      <p id="notice" hidden></p>
 
       <button id="play" type="button" aria-label="Begin the séance"></button>
+      <button id="restart" type="button" aria-label="Restart the séance" hidden></button>
 
       <div id="hand" aria-hidden="true"></div>
       <div id="cursor" aria-hidden="true"></div>
@@ -40,13 +40,6 @@
 
       <p id="disclaimer">For entertainment. The spirit is an AI.</p>
 
-      <section id="farewell" hidden aria-label="The séance has ended">
-        <div class="farewell-words">
-          <p class="farewell-line"><span class="dim">It was nice to</span> meet you.</p>
-          <p class="farewell-line dim">Come back again.</p>
-        </div>
-        <button id="restart" type="button">Restart</button>
-      </section>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

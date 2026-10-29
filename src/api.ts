@@ -5,13 +5,17 @@ import type { Turn } from "../shared/seance";
 export type SeatState = "seated" | "locked" | "unprepared";
 export type EnterResult = "ok" | "wrong" | "slow" | "unprepared";
 export type AskResult =
-  | { reply: string; /** Shown as a hint, e.g. when replies come from a fallback. */ note?: string }
+  | { reply: string; /** Logged to the console, e.g. when the spirit's replies are canned. */ note?: string }
   | { error: "slow" | "silent" | "locked" | "unprepared" };
 
-/** A question for the spirit. The first of a séance is the sitters' greeting, with no history. */
+/**
+ * A question for the spirit. The first of a séance is the sitters' greeting,
+ * with no history; `mood` is the spirit's mood for the séance (see MOOD_COUNT).
+ */
 export interface AskBody {
   history: Turn[];
   question: string;
+  mood: number;
 }
 
 async function call(path: string, body?: unknown): Promise<Response | null> {

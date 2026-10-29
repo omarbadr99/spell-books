@@ -7,6 +7,13 @@ export interface Turn {
 /** Spelled when Claude declines to answer. */
 export const REFUSAL_REPLY = "I CANNOT SAY";
 
+/**
+ * How many moods the spirit can be in. The page picks one when the séance
+ * begins and sends it with every question, so her greeting and her temper
+ * change from one séance to the next (the moods are in worker/spirits.ts).
+ */
+export const MOOD_COUNT = 8;
+
 /** Most earlier turns a question may carry (twelve exchanges, the greeting among them). */
 export const MAX_HISTORY = 24;
 

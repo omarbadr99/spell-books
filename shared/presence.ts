@@ -33,9 +33,9 @@ export interface SpiritSound {
 export const CANDLELIGHT = "#ef8e34";
 
 export interface PublicSpirit {
-  /** Written over the spirit's words once it spells it. */
+  /** What the spirit is called. */
   name: string;
-  /** Words in a reply that count as the spirit giving its name. */
+  /** The words it spells when asked its name. */
   revealWords: string[];
   /** The candle's color while the spirit is here, which tints the room and its glows. */
   color: string;

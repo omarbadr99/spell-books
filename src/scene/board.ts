@@ -5,13 +5,15 @@
 // become the land, the stream of light and the two figures holding hands (see
 // land.ts). Each point knows where it belongs in each of these, and which way
 // its stroke's edge faces on the board, so the light can catch it from the side.
+// Under the farewell's land, RESTART is written in grains of its own, the way
+// START is.
 
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial, Vector3 } from "three";
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial, Vector2, Vector3 } from "three";
 import type { BoardLayout } from "../board/layout";
 import { framing, layOutFarewell, type FarewellLayout } from "./land";
 import { candleMask, textMask, type Drawn } from "./masks";
 import { coverage, KIND, sampleMask, seeded, type Sample } from "./sampling";
-import { BOARD_VERTEX, POINT_FRAGMENT } from "./shaders";
+import { BOARD_VERTEX, POINT_FRAGMENT, RESTART_VERTEX } from "./shaders";
 import { shared } from "./uniforms";
 
 /** Masks are drawn at twice the board's units, for finer detail. */
@@ -38,6 +40,8 @@ export interface BoardParticles {
   slots: Map<string, number>;
   /** Where START is written. */
   start: ViewBox;
+  /** RESTART, under the farewell's land, and where it is written. */
+  restart: { points: Points<BufferGeometry, ShaderMaterial>; box: ViewBox };
   /**
    * The farewell, laid out a little at a time: step it until it is done, then
    * hand what it returns to `settle`, which puts the points in their places.
@@ -48,6 +52,80 @@ export interface BoardParticles {
 
 /** The share of the points that make START; the rest swirl round it. */
 const WORD_SHARE = 0.3;
+/**
+ * RESTART, below the farewell's land: how high it may be written and where its
+ * middle is, in view units, and the share of the view's width it may take,
+ * more than START's two thirds since it is a longer word.
+ */
+const RESTART = { tall: 0.28, y: -0.72, wide: 0.85 };
+
+/**
+ * A word in the board's lettering, laid out in view units with its middle at
+ * (x, y): at most `tall` high, and no wider than `wide` of the view.
+ */
+function written(text: string, tall: number, aspect: number, x: number, y: number, wide = 0.65) {
+  const mask = textMask(text, 240, BOARD_FONT, 240 * 0.14);
+  const b = bounds(mask);
+  const scale = Math.min(tall / (b.y1 - b.y0), (2 * wide * aspect) / (b.x1 - b.x0));
+  const mid = { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 };
+  const box: ViewBox = {
+    x0: x + (b.x0 - mid.x) * scale,
+    x1: x + (b.x1 - mid.x) * scale,
+    y0: y - (b.y1 - mid.y) * scale,
+    y1: y - (b.y0 - mid.y) * scale,
+  };
+  return {
+    mask,
+    box,
+    /** How much of the view its strokes cover, so two words can be written as thickly. */
+    area: coverage(mask) * scale * scale,
+    /** Where a point sampled from the mask goes. */
+    at: (pt: Sample): [number, number] => [x + (pt.x - mid.x) * scale, y - (pt.y - mid.y) * scale],
+  };
+}
+
+/** RESTART in grains, `thickness` of them for each unit of the view its strokes cover, each drifting in out of the dust about it. */
+function restartWord(aspect: number, thickness: number, rand: () => number) {
+  const word = written("RESTART", RESTART.tall, aspect, 0, RESTART.y, RESTART.wide);
+  const points = sampleMask(word.mask, Math.round(word.area * thickness), rand, 1.5);
+  const positions = new Float32Array(points.length * 3);
+  const from = new Float32Array(points.length * 3);
+  const seeds = new Float32Array(points.length * 4);
+  const kinds = new Float32Array(points.length);
+  const half = (word.box.x1 - word.box.x0) / 2;
+  points.forEach((pt, i) => {
+    const [x, y] = word.at(pt);
+    positions.set([x, y, (rand() - 0.5) * 0.02], i * 3);
+    from.set([x * 1.4 + gauss(rand) * half * 0.3, y - 0.1 + gauss(rand) * 0.12, 0.05 + 0.35 * rand()], i * 3);
+    seeds.set([rand(), rand(), rand(), rand()], i * 4);
+    kinds[i] = pt.kind;
+  });
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  geometry.setAttribute("aFrom", new BufferAttribute(from, 3));
+  geometry.setAttribute("aSeed", new BufferAttribute(seeds, 4));
+  geometry.setAttribute("aKind", new BufferAttribute(kinds, 1));
+  const material = new ShaderMaterial({
+    uniforms: {
+      ...shared,
+      uGather: { value: 0 },
+      uNear: { value: 0 },
+      uBurst: { value: 0 },
+      uMiddle: { value: new Vector2(0, RESTART.y) },
+    },
+    vertexShader: RESTART_VERTEX,
+    fragmentShader: POINT_FRAGMENT,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    blending: AdditiveBlending,
+  });
+  const layer = new Points(geometry, material);
+  layer.frustumCulled = false;
+  layer.renderOrder = 3;
+  layer.visible = false;
+  return { points: layer, box: word.box };
+}
 
 /** The candle's proportions, shared with the flame that sits on it. */
 export function candleGeometry(layout: BoardLayout) {
@@ -154,25 +232,15 @@ export function buildBoard(layout: BoardLayout, density: number, aspect: number,
 
   // START, as wide as two thirds of the view at most, and the rest of the dust in a slow swirl round it.
   const word = new Float32Array(n * 4);
-  const letters = textMask("START", 240, BOARD_FONT, 240 * 0.14);
-  const lb = bounds(letters);
-  const scale = Math.min(0.3 / (lb.y1 - lb.y0), (1.3 * aspect) / (lb.x1 - lb.x0));
-  const mid = { x: (lb.x0 + lb.x1) / 2, y: (lb.y0 + lb.y1) / 2 };
-  const start: ViewBox = {
-    x0: (lb.x0 - mid.x) * scale,
-    x1: (lb.x1 - mid.x) * scale,
-    y0: -(lb.y1 - mid.y) * scale,
-    y1: -(lb.y0 - mid.y) * scale,
-  };
+  const start = written("START", 0.3, aspect, 0, 0);
   const order = shuffled(n, rand);
   const inWord = Math.round(n * WORD_SHARE);
-  const wordPoints = sampleMask(letters, inWord, rand, 1.5);
-  const inner = start.x1 * 1.1;
-  const outer = start.x1 * 2.6;
+  const wordPoints = sampleMask(start.mask, inWord, rand, 1.5);
+  const inner = start.box.x1 * 1.1;
+  const outer = start.box.x1 * 2.6;
   order.forEach((i, k) => {
     if (k < inWord) {
-      const pt = wordPoints[k];
-      word.set([(pt.x - mid.x) * scale, -(pt.y - mid.y) * scale, (rand() - 0.5) * 0.02, 0], i * 4);
+      word.set([...start.at(wordPoints[k]), (rand() - 0.5) * 0.02, 0], i * 4);
     } else {
       const r = inner + (outer - inner) * rand() ** 2.2;
       word.set([rand() * Math.PI * 2, r, gauss(rand) * 0.035 * (1 + r), 1], i * 4);
@@ -214,7 +282,9 @@ export function buildBoard(layout: BoardLayout, density: number, aspect: number,
   return {
     points,
     slots,
-    start,
+    start: start.box,
+    // As thickly as START is written.
+    restart: restartWord(aspect, inWord / start.area, rand),
     farewell: layOutFarewell(n, grains, framing(aspect).aspect, seeded(layout.kind === "wide" ? 7 : 11)),
     settle(farewell: FarewellLayout) {
       end.copyArray(farewell.end);

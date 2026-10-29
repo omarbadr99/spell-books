@@ -1,5 +1,4 @@
 import "@fontsource/cinzel/700.css";
-import "@fontsource/m-plus-1-code/latin-300.css";
 import "./styles.css";
 
 import { boardWidthFor, buildLayout, chooseLayoutKind, elementById, hitTest, type BoardLayout, type LayoutKind } from "./board/layout";
@@ -10,7 +9,6 @@ import { Room } from "./fx/room";
 import { DwellDetector } from "./planchette/dwell";
 import { Planchette } from "./planchette/planchette";
 import { Possessor } from "./planchette/possess";
-import { Farewell } from "./seance/farewell";
 import { InkLine, SpiritLine, Voice } from "./seance/lines";
 import { Seance } from "./seance/machine";
 import { Ticker } from "./ticker";
@@ -26,7 +24,7 @@ const JITTER = 6;
 /** The board's own lettering, which the particles are sampled from. */
 const BOARD_FONT = "700 80px Cinzel";
 /** The page's own buttons, over which the planchette steps aside for the ordinary pointer. */
-const BUTTONS = "#mute, #voice, #restart";
+const BUTTONS = "#mute, #voice";
 
 // In development only: ?speed=4 runs the spirit faster, for the tests, and ?steady keeps the
 // picture at full resolution however slowly frames come, for screenshots.
@@ -37,8 +35,13 @@ const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const roomEl = $<HTMLElement>("#room");
 const table = $<HTMLElement>("#table");
-/** START is written in the particles; this button lies over it, so it can be pressed, tapped or reached from the keyboard. */
+/**
+ * START, and RESTART under the farewell's land, are written in the particles;
+ * these buttons lie over them, so they can be pressed, tapped or reached from
+ * the keyboard.
+ */
 const playEl = $<HTMLButtonElement>("#play");
+const restartEl = $<HTMLButtonElement>("#restart");
 /** The hand's own mark, while the spirit has the planchette. */
 const cursorEl = $<HTMLElement>("#cursor");
 
@@ -58,7 +61,9 @@ let view: BoardView;
 try {
   view = new BoardView($<HTMLCanvasElement>("#scene"), table, $<HTMLElement>("#hand"));
 } catch (error) {
-  $("#hint").textContent = "This board is drawn with WebGL, which this browser has turned off.";
+  const notice = $<HTMLElement>("#notice");
+  notice.textContent = "This board is drawn with WebGL, which this browser has turned off.";
+  notice.hidden = false;
   throw error;
 }
 
@@ -69,12 +74,11 @@ const planchette = new Planchette(view);
 const possessor = new Possessor(planchette, view, ticker, speed);
 possessor.handAt = () => view.toBoard(pointer.x, pointer.y);
 const sound = new SoundScape();
-const room = new Room(roomEl, view, $("#hint"));
-const voice = new Voice($("#voice"), $("#voice-label"));
+const room = new Room(roomEl, view);
+const voice = new Voice($("#voice"));
 
 let layout: BoardLayout = buildLayout(chooseLayoutKind(innerWidth, innerHeight));
 const dwell = new DwellDetector((x, y) => hitTest(layout, x, y)?.id ?? null, { dwellMs: DWELL_MS, maxSpeed: 260 });
-const farewell = new Farewell($("#farewell"), () => void restart());
 
 const seance: Seance = new Seance({
   room,
@@ -101,26 +105,23 @@ function applyLayout(kind: LayoutKind): void {
   view.setLayout(layout);
 }
 
-/** Lays the START button over the word, wherever the view has put it. */
-function placePlay(): void {
-  if (playEl.hidden) return;
-  const box = view.startBox();
+/**
+ * START (or RESTART) waits to be pressed: it stirs and brightens as the glass
+ * comes near it, and its button lies over it, wherever the view has put it.
+ */
+function awaitPress(button: HTMLButtonElement, word: "start" | "restart"): void {
+  if (button.hidden) return;
+  const box = view.wordBox(word);
+  const dx = (pointer.x - (box.left + box.right) / 2) / ((box.right - box.left) / 2);
+  const dy = (pointer.y - (box.top + box.bottom) / 2) / ((box.bottom - box.top) / 2);
+  view.nearWord(Math.min(1, Math.max(0, (2.2 - Math.hypot(dx, dy * 0.5)) / 1.6)));
   const pad = 14;
-  Object.assign(playEl.style, {
+  Object.assign(button.style, {
     left: `${(box.left - pad).toFixed(0)}px`,
     top: `${(box.top - pad).toFixed(0)}px`,
     width: `${(box.right - box.left + 2 * pad).toFixed(0)}px`,
     height: `${(box.bottom - box.top + 2 * pad).toFixed(0)}px`,
   });
-}
-
-/** Before the séance: START stirs and brightens as the glass comes near it. */
-function awaitStart(): void {
-  const box = view.startBox();
-  const dx = (pointer.x - (box.left + box.right) / 2) / ((box.right - box.left) / 2);
-  const dy = (pointer.y - (box.top + box.bottom) / 2) / ((box.bottom - box.top) / 2);
-  view.nearStart(Math.min(1, Math.max(0, (2.2 - Math.hypot(dx, dy * 0.5)) / 1.6)));
-  placePlay();
 }
 
 /**
@@ -179,40 +180,36 @@ async function begin(): Promise<void> {
   if (scene !== "start") return;
   scene = "board";
   playEl.hidden = true;
-  view.nearStart(1);
+  view.nearWord(1);
   sound.unlock();
   sound.awaken();
   void api.prepare();
   await view.open(calm);
   roomEl.classList.remove("intro");
-  room.prompt(null);
   await booted;
 }
 
-/** The spirit has gone: the board breaks up into the farewell. */
+/** The spirit has gone: the board breaks up into the farewell, and RESTART gathers under the land. */
 async function part(): Promise<void> {
   scene = "farewell";
   roomEl.classList.add("parted");
   sound.farewell();
-  const formed = view.farewell(calm);
-  window.setTimeout(() => {
-    if (scene === "farewell") farewell.show();
-  }, calm ? 0 : 3400);
-  await formed;
+  view.nearWord(0);
+  await view.farewell(calm);
+  if (scene === "farewell") restartEl.hidden = false;
 }
 
-/** Restart: the farewell flies back together into START. */
+/** RESTART is pressed: it bursts, and the land flies back together into the board for another séance. */
 async function restart(): Promise<void> {
-  if (scene !== "farewell") return;
-  scene = "start";
-  farewell.hide();
-  pointer.overButton = false;
+  if (scene !== "farewell" || restartEl.hidden) return;
+  scene = "board";
+  restartEl.hidden = true;
+  view.nearWord(1);
   roomEl.classList.remove("parted");
-  roomEl.classList.add("intro");
-  room.prompt("Press START to begin.");
   seance.restart();
-  playEl.hidden = false;
-  await view.again(calm);
+  sound.unlock();
+  sound.awaken();
+  await view.reopen(calm);
 }
 
 /** Where the sitters' pointer is, and whether it is over one of the page's own buttons. */
@@ -234,6 +231,7 @@ addEventListener("pointerdown", (e) => {
   if (scene === "board" && e.pointerType === "mouse" && e.button === 0 && !pointer.overButton) chooseNow();
 });
 playEl.addEventListener("click", () => void begin());
+restartEl.addEventListener("click", () => void restart());
 // Tapping the message rubs out its last letter.
 $("#voice").addEventListener("click", () => seance.unsay());
 
@@ -247,14 +245,15 @@ ticker.add((now, dt) => {
   planchette.tick(dt);
   sound.scrape(planchette.speed);
   sound.wind(view.windLevel);
-  // The planchette rests once the spirit has gone; otherwise it steps aside only for the page's own buttons.
-  view.showPlanchette(scene !== "farewell" && (planchette.driven || !pointer.overButton));
+  // The planchette steps aside only for the page's own buttons.
+  view.showPlanchette(planchette.driven || !pointer.overButton);
   // While the spirit has the planchette, a faint mark shows where the hand is.
   const hand = planchette.driven && !pointer.touch;
   cursorEl.classList.toggle("on", hand);
   if (hand) cursorEl.style.transform = `translate(${pointer.x.toFixed(1)}px, ${pointer.y.toFixed(1)}px)`;
-  if (scene === "start") awaitStart();
-  else if (scene === "board") spellWith(now, dt);
+  if (scene === "start") awaitPress(playEl, "start");
+  else if (scene === "farewell") awaitPress(restartEl, "restart");
+  else spellWith(now, dt);
 });
 ticker.onDraw((now, dt) => view.tick(now, dt));
 
@@ -303,10 +302,14 @@ if (import.meta.env.DEV) {
       lastTarget: () => possessor.lastTarget,
       spiritLine: () => $("#spirit-line").textContent,
       ink: () => seance.inkText,
-      speaker: () => `${$("#voice").getAttribute("data-speaker")}:${$("#voice-label").textContent}`,
+      speaker: () => $("#voice").getAttribute("data-speaker"),
       forming: () => view.forming,
       start: () => {
-        const box = view.startBox();
+        const box = view.wordBox("start");
+        return { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 };
+      },
+      restart: () => {
+        const box = view.wordBox("restart");
         return { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 };
       },
       // The scene itself, for measuring what each layer costs.
@@ -338,8 +341,7 @@ async function start(): Promise<void> {
     };
     document.fonts.addEventListener("loadingdone", late);
   }
-  // Meanwhile, find out whether this device already knows the word. Its hints wait until the séance begins.
-  room.prompt("Press START to begin.");
+  // Meanwhile, find out whether this device already knows the word.
   booted = seance.boot();
   // The dust flies together into START, and waits there to be pressed.
   await view.gather(calm);

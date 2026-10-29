@@ -76,29 +76,16 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 
-/* What is being said: the sitters' message as they spell it, or the spirit's reply. */
+/* What is being said: the sitters' message as they spell it, in white, or the spirit's reply, in candlelight. */
 #voice {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
   min-height: 66px;
   max-width: min(100%, calc(var(--board-w) + 120px));
   text-align: center;
   cursor: pointer;
-}
-
-#voice-label {
-  margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: rgba(236, 238, 243, 0.42);
-  transition: color 0.8s ease;
-}
-
-#voice[data-speaker="spirit"] #voice-label {
-  color: rgba(var(--spirit-rgb), 0.85);
 }
 
 #voice-lines {
@@ -335,22 +322,6 @@ body {
   stroke-linecap: round;
 }
 
-#hint {
-  margin: 0;
-  min-height: 2.8em;
-  max-width: 30em;
-  font-size: clamp(12px, 1.9vmin, 15px);
-  line-height: 1.4;
-  letter-spacing: 0.06em;
-  text-align: center;
-  color: rgba(236, 238, 243, 0.5);
-  transition: opacity 0.26s ease;
-}
-
-#hint.changing {
-  opacity: 0;
-}
-
 #mute {
   position: fixed;
   z-index: 4;
@@ -409,8 +380,12 @@ body {
   opacity: 0;
 }
 
-/* START is written in the particles; this lies over it, so it can be pressed, tapped or reached from the keyboard. */
-#play {
+/*
+ * START, and RESTART under the farewell's land, are written in the particles; these lie over them,
+ * so they can be pressed, tapped or reached from the keyboard.
+ */
+#play,
+#restart {
   position: fixed;
   z-index: 3;
   padding: 0;
@@ -421,12 +396,30 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-#play:focus-visible {
+#play:focus-visible,
+#restart:focus-visible {
   outline: 1px solid rgba(236, 238, 243, 0.4);
   outline-offset: 4px;
 }
 
-#play[hidden] {
+#play[hidden],
+#restart[hidden] {
+  display: none;
+}
+
+#notice {
+  position: fixed;
+  z-index: 4;
+  left: 16px;
+  right: 16px;
+  bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  margin: 0;
+  font-size: 14px;
+  text-align: center;
+  color: rgba(236, 238, 243, 0.6);
+}
+
+#notice[hidden] {
   display: none;
 }
 
@@ -439,91 +432,8 @@ body {
 #room.intro #voice,
 #room.intro #mute,
 #room.intro #disclaimer,
-#room.parted #voice,
-#room.parted #hint {
+#room.parted #voice {
   opacity: 0;
-}
-
-/* Once the spirit has gone the planchette rests, and the pointer is the pointer again. */
-#room.parted {
-  cursor: default;
-}
-
-#hint {
-  transition: opacity 0.6s ease;
-}
-
-/*
- * The farewell after GOODBYE: the land, and under it a few words and a way to begin again, set plainly
- * like the end of a film: a light monospaced line in two greys, and a white button.
- */
-#farewell {
-  --mono: "M PLUS 1 Code", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  position: fixed;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 22px 40px;
-  padding: 70vh max(8.4vw, 22px, env(safe-area-inset-right, 0px)) 0 max(8.4vw, 22px, env(safe-area-inset-left, 0px));
-  pointer-events: none;
-  animation: appear 1.6s ease both;
-}
-
-#farewell[hidden] {
-  display: none;
-}
-
-.farewell-words {
-  font-family: var(--mono);
-  font-weight: 300;
-  font-size: clamp(22px, min(3.4vw, 5.4vh), 46px);
-  line-height: 1.12;
-  letter-spacing: -0.01em;
-}
-
-.farewell-line {
-  margin: 0;
-  color: #fff;
-}
-
-.farewell-line .dim,
-.farewell-line.dim {
-  color: #5e5e5e;
-}
-
-#restart {
-  flex: none;
-  margin-top: 0.15em;
-  padding: 0.78em 1.15em;
-  border: 0;
-  border-radius: 2px;
-  background: #fff;
-  color: #141414;
-  font: 500 clamp(12px, 1.05vw, 15px) / 1 var(--sans);
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  pointer-events: auto;
-  transition: background 0.25s ease;
-}
-
-#restart:hover,
-#restart:focus-visible {
-  background: #d9d9d9;
-  outline: none;
-}
-
-#restart:focus-visible {
-  box-shadow: 0 0 0 2px #101010, 0 0 0 4px #fff;
-}
-
-/* On a narrow screen the button goes under the words. */
-@media (max-width: 640px) {
-  #farewell {
-    flex-direction: column;
-    justify-content: flex-start;
-  }
 }
 
 /* The dark of the farewell is even, like the night over the land. */
@@ -535,13 +445,6 @@ body {
   opacity: 0;
 }
 
-@keyframes appear {
-  from {
-    opacity: 0;
-  }
-}
-
-
 /* Phones held sideways: every pixel of height goes to the board. */
 @media (max-height: 520px) {
   #stage {
@@ -551,16 +454,5 @@ body {
 
   #voice {
     min-height: 44px;
-    gap: 4px;
-  }
-
-  #hint {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #farewell {
-    animation: none;
   }
 }

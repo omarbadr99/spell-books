@@ -1,5 +1,5 @@
-// The room around the board: phase classes, the candle and its color, and hints.
-// The candle itself is drawn by the scene; this tells it what to do.
+// The room around the board: phase classes, and the candle and its color. The
+// candle itself is drawn by the scene; this tells it what to do.
 
 import type { PublicSpirit } from "../../shared/presence";
 import type { LayoutKind } from "../board/layout";
@@ -34,13 +34,9 @@ const toRgb = (hex: string) => {
 };
 
 export class Room {
-  /** The séance's latest hint, held back while the page shows a prompt of its own. */
-  private held: string | null = null;
-
   constructor(
     private readonly el: HTMLElement,
     private readonly scenery: Scenery,
-    private readonly hintEl: HTMLElement,
   ) {}
 
   setPhase(phase: Phase): void {
@@ -71,40 +67,5 @@ export class Room {
 
   shudder(): void {
     this.scenery.shudder();
-  }
-
-  hint(text: string): void {
-    if (this.held !== null) {
-      this.held = text;
-      return;
-    }
-    this.show(text);
-  }
-
-  /**
-   * Shows a prompt of the page's own in place of the séance's hints, which wait
-   * until it is taken away again with null.
-   */
-  prompt(text: string | null): void {
-    if (text === null) {
-      if (this.held === null) return;
-      const held = this.held;
-      this.held = null;
-      this.show(held);
-      return;
-    }
-    if (this.held === null) this.held = this.hintEl.dataset.text ?? "";
-    this.show(text);
-  }
-
-  private show(text: string): void {
-    if (this.hintEl.dataset.text === text) return;
-    this.hintEl.dataset.text = text;
-    this.hintEl.classList.add("changing");
-    window.setTimeout(() => {
-      if (this.hintEl.dataset.text !== text) return;
-      this.hintEl.textContent = text;
-      this.hintEl.classList.remove("changing");
-    }, 260);
   }
 }

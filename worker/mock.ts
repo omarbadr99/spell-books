@@ -4,15 +4,18 @@
 import { SPIRIT } from "../shared/presence";
 import { isYesNoQuestion } from "../shared/text";
 
-/** How the spirit answers the sitters' greeting. */
-const GREETING = "WHAT NOW";
+/** How the spirit answers the sitters' greeting, in each of her moods (see MOOD_COUNT). */
+export const MOCK_GREETINGS = ["WHAT NOW", "YOU AGAIN", "WHAT", "SPEAK", "FINALLY", "OH GOOD", "MAKE IT QUICK", "WHO CALLS"];
 
-const MUTTERINGS = ["UGH", "NOPE", "OBVIOUSLY", "BORING", "NEXT", "WHY", "SERIOUSLY", "LATER"];
+const MUTTERINGS = ["UGH", "PASS", "OBVIOUSLY", "BORING", "NEXT", "WHY", "SERIOUSLY", "LATER"];
 
-/** `turn` is how many turns came before this one; 0 means these are the sitters' first words. */
-export function mockReply(question: string, turn: number): string {
+/**
+ * `turn` is how many turns came before this one; 0 means these are the
+ * sitters' first words. `mood` is the spirit's mood for the séance.
+ */
+export function mockReply(question: string, turn: number, mood = 0): string {
   const q = question.replace(/ /g, "");
-  if (turn === 0) return GREETING;
+  if (turn === 0) return MOCK_GREETINGS[Math.abs(Math.trunc(mood)) % MOCK_GREETINGS.length];
   if (q.includes("BYE")) return "GOODBYE";
   if (q.startsWith("WHO") || q.includes("NAME")) return SPIRIT.revealWords[0];
   if (isYesNoQuestion(q)) return q.length % 2 === 0 ? "YES" : "NO";

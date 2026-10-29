@@ -447,6 +447,66 @@ void main() {
 }
 `;
 
+/**
+ * RESTART, under the farewell's land, written the way START is: the same
+ * silvery grains, breathing, and stirring and brightening as the planchette's
+ * glass comes near. It gathers out of the dust once the land has formed, each
+ * grain at its own moment, and bursts apart, out and toward the eye, when it is
+ * pressed and the board flies back together.
+ */
+export const RESTART_VERTEX = /* glsl */ `
+uniform float uTime;
+uniform float uFocal;
+uniform float uDistance;
+uniform float uDot;
+uniform vec4 uView;
+uniform float uGather;  // how far it has gathered, 0..1
+uniform float uNear;    // how near the planchette's glass is, 0..1
+uniform float uBurst;   // how far it has burst apart, 0..1
+uniform vec2 uMiddle;   // the middle of the word, in view units
+attribute vec3 aFrom;   // where each grain drifts in from, in view units (see inView)
+attribute vec4 aSeed;
+attribute float aKind;  // what it is part of (KIND in sampling.ts)
+varying vec3 vColor;
+varying float vAlpha;
+varying float vSoft;
+
+/** From view units to the world: x and y in half-heights of the view about its middle, z in camera distances toward the eye. */
+vec3 inView(vec3 v) {
+  float z = v.z * uDistance;
+  return vec3(uView.xy + v.xy * uView.w * (uDistance - z) / uDistance, z);
+}
+
+void main() {
+  bool isDust = aKind > 1.5 && aKind < 2.5;
+  bool isHaze = aKind > 2.5;
+  float twinkle = 0.82 + 0.18 * sin(uTime * (1.1 + aSeed.y * 2.4) + aSeed.z * 41.0);
+  float breathe = 0.5 + 0.5 * sin(uTime * 1.6 - position.x * 2.5);
+  vec3 v = position;
+  v.xy += (0.002 + 0.012 * uNear) * vec2(sin(uTime * (9.0 + 6.0 * aSeed.y) + aSeed.z * 40.0), cos(uTime * (8.0 + 7.0 * aSeed.z) + aSeed.y * 40.0));
+  // Gathering: each grain sets off at its own moment and glides in, slowing as it arrives.
+  float k = clamp((uGather - 0.45 * aSeed.x) / 0.55, 0.0, 1.0);
+  v = mix(aFrom, v, 1.0 - pow(1.0 - k, 3.0));
+  // Bursting: out from the middle of the word, rising a little, and toward the eye.
+  float b = clamp((uBurst - 0.25 * aSeed.y) / 0.75, 0.0, 1.0);
+  vec2 away = position.xy - uMiddle;
+  away /= max(length(away), 0.001);
+  v.xy += (away * (0.25 + 0.9 * aSeed.z) + vec2(0.0, 0.25 * b)) * b;
+  v.z += (0.15 + 0.5 * aSeed.w) * b;
+
+  vec3 silver = mix(vec3(0.7, 0.76, 0.94), vec3(0.97, 0.98, 1.0), aSeed.w) * (0.6 + 0.6 * aSeed.z * aSeed.z);
+  // A little brighter than START, to hold its own under the lit land.
+  vColor = silver * twinkle * (0.85 + 0.3 * breathe + 0.9 * uNear) * (1.3 + 0.8 * b);
+  float shown = smoothstep(0.0, 0.25, k) * (1.0 - b);
+  vAlpha = shown * (isHaze ? 0.04 + 0.04 * breathe + 0.1 * uNear : (isDust ? 0.45 : 0.85) * (0.6 + 0.2 * breathe + 0.3 * uNear));
+  vSoft = isHaze ? 1.0 : 0.0;
+  vec4 mv = modelViewMatrix * vec4(inView(v), 1.0);
+  float px = isHaze ? (16.0 + aSeed.z * 16.0) * uFocal / -mv.z : (0.9 + aSeed.z * 1.5) * uDot * uDistance / -mv.z;
+  gl_PointSize = clamp(px, 1.0, 90.0);
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
 /** Stars: drifting and twinkling, turning slowly with the whole sky. */
 export const STARS_VERTEX = /* glsl */ `
 uniform float uTime;

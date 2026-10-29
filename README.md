@@ -12,16 +12,19 @@ arrives: short-tempered, sassy, and not much of a talker. She takes the
 planchette out of your hand, spells her answer on her own, usually in a single
 word, and hands it back. Say goodbye and the board breaks up into a farewell:
 a land of dust under the stars, with a stream of light along its ridge, where
-a ghost made of particles holds the hand of a solid figure walking away. The
-idea comes from Maxime Rivest's Tom Riddle diary for the reMarkable.
+a ghost made of particles holds the hand of a solid figure walking away, and
+RESTART written underneath in the same particles as START. The idea comes from
+Maxime Rivest's Tom Riddle diary for the reMarkable.
 
 <p align="center">
   <img src="docs/board-desktop.jpg" alt="The board on a laptop, curved round the viewer, as the spirit answers: the candle burns on the left and lights the nearest letters orange, the letters further off are dim and silvery, and the planchette rests on a letter" width="640">
-  <img src="docs/board-phone.jpg" alt="The farewell on a phone: on a ridge of rolling dunes made of white particles, a faint grey ghost holds the hand of a solid white figure walking away, above the words It was nice to meet you, Come back again, and a white Restart button" width="200">
+  <img src="docs/board-phone.jpg" alt="The farewell on a phone: on a ridge of rolling dunes made of white particles, a faint grey ghost holds the hand of a solid white figure walking away, with the word RESTART written in glowing particles below the land" width="200">
 </p>
 
 There is no typing anywhere. Even the word that unlocks the board is spelled
-with the planchette.
+with the planchette. Nothing on the screen explains anything either: no hints
+and no labels. Your message shows in white above the board, and the spirit's
+replies glow there in candlelight. This README is the manual.
 
 ## How to play
 
@@ -48,28 +51,38 @@ with the planchette.
   board. Spell a greeting and rest: `HI`, `HELLO`, `HEY`, `ISANYONETHERE`,
   `WHOSTHERE`, or a hello in another language (`HOLA`, `SALAM`, `BONJOUR`...).
   Anything that isn't a greeting fades into the dark board and nothing comes. A
-  greeting lights the candle, a breeze gets up, and the spirit greets you back
-  in a way that gets you asking (`WHAT NOW`).
+  greeting lights the candle, a breeze gets up, and the spirit greets you back,
+  differently each time, depending on her mood tonight (`WHAT`, `YOU AGAIN`,
+  `FINALLY`, `WHO CALLS`...).
 - **Ask anything.** The spirit answers in a word when she can, and in two or
   three only when one won't do. A yes-or-no question gets a bare **YES** or
-  **NO**. With nothing spelled, resting on **YES** or **NO** answers her own
-  question straight away. Ask `WHOAREYOU` and her words appear under her name
-  from then on. While she thinks and spells, the planchette is hers: moving
-  your mouse does nothing, and a faint dot shows where your pointer is. When
-  she's done, the planchette slides back to your pointer.
+  **NO**, always plain: never NOPE or YEAH. With nothing spelled, resting on
+  **YES** or **NO** answers her own question straight away. Ask `WHOAREYOU`
+  and she spells her name. Ask to see her (`SHOWYOURFACE`, `SHOWYOURSELF`) and
+  she spells **GOODBYE** and leaves. While she thinks and spells, the
+  planchette is hers: moving your mouse does nothing, and a faint dot shows
+  where your pointer is. When she's done, the planchette slides back to your
+  pointer.
 - **End the séance.** Rest the window on **GOODBYE** and the spirit leaves
   without a word: a last gust blows the candle out, and the board breaks up
   into the farewell. The far dunes form first, then the stream of light along
   the ridge, then the ghost, and last the figure holding its hand, from the
-  feet up. She also leaves on her own if you're rude. **Restart** gathers the
-  particles back into START for another séance.
+  feet up. Then RESTART gathers under the land, written like START, and stirs
+  as the planchette comes near. She also leaves on her own if you're rude, or
+  if you ask to see her.
+- **Restart.** Press RESTART and it bursts, and the land flies straight back
+  into the board, candle out, ready for another greeting. It doesn't go back to
+  START.
 
 ## The spirit
 
 There is one spirit, Mavis, and she answers on Claude Opus 5.5. She has been
 stuck answering this board for longer than she cares to say and is fed up with
 silly questions: dry, impatient and sassy rather than spooky (`OBVIOUSLY`,
-`NOPE`, `RUDE`, `NEXT`), never cruel, and secretly glad of the company. She
+`UGH`, `RUDE`, `NEXT`), never cruel, and secretly glad of the company. A no is
+always a plain **NO**. Each séance she's in one of eight moods (woken from a
+doze, busy with something better, suspicious, in a rare good mood that annoys
+her...), which sets how she greets you and her temper for the rest of it. She
 moves the planchette briskly, straight at each letter and a little past it,
 and the candle burns in plain candlelight.
 
@@ -220,23 +233,28 @@ The spirit has two halves:
 
 The rules she follows are in `BASE_RULES` in the same file: answer the
 greeting in a way that gets the sitters asking, one word (two or three only
-when one can't carry it), YES or NO alone for a yes-or-no question, leave when
-insulted, sassy but never cruel, and gentle guardrails. What counts as a
-greeting is `isGreeting` in `shared/text.ts`.
+when one can't carry it), a plain YES or NO alone for a yes-or-no question,
+leave when insulted or asked to show herself, sassy but never cruel, and gentle
+guardrails. Her eight moods are `moods` in the persona; the page picks one when
+the séance begins and sends it with every question. What counts as a greeting
+is `isGreeting` in `shared/text.ts`. Two rules are also kept in code, whatever
+the model says: `sanitizeReply` turns NOPE, NAH, YEP and YEAH into a plain NO
+or YES, and asking to see her (`asksToSeeSpirit`) gets GOODBYE without asking
+the model at all.
 
 To hear how she actually sounds before you film:
 
 ```bash
-npm run sample                                  # on Opus (a few cents)
+npm run sample                                  # on Opus (about 30 cents)
 npm run sample -- --effort medium               # with more thinking
 npm run sample -- --model claude-haiku-5-5      # on another model, to compare
 ```
 
-This greets her three ways, then asks the same 20 questions after a `HELLO`,
-through the real model, and prints the replies with what the run cost. It
-flags any reply that breaks the board's format. It reads `ANTHROPIC_API_KEY`
-from your shell or from `.dev.vars`. The unit tests check that her lines fit on
-the board.
+This greets her three ways in each of her moods, then asks the same 21
+questions after a `HELLO`, through the real model, and prints the replies with
+what the run cost. It flags any reply that breaks the board's format. It reads
+`ANTHROPIC_API_KEY` from your shell or from `.dev.vars`. The unit tests check
+that her lines fit on the board.
 
 ## How it's built
 
@@ -262,7 +280,9 @@ the board.
     where the eye can see it, so it crowds along the crests, and an extra
     layer of dust (`src/scene/dust.ts`) covers what the board's points can't.
     It is all worked out a few milliseconds at a time while START waits, and
-    framed smaller and moved to the middle on a phone held upright.
+    framed smaller and moved to the middle on a phone held upright. RESTART,
+    under the land, is written in grains of its own, from the same lettering
+    and as thickly as START.
   - The board's curve (`src/scene/bend.ts`) is one small formula, shared by the
     shader that bends the particles and the page, which runs it backward
     (with a few steps of Newton's method) to find the point of the board under
